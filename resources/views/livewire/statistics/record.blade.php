@@ -285,10 +285,10 @@
             <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
             <div class="grid grid-cols-2 grid-rows-7 gap-3 portrait:grid-rows-7 portrait:gap-3">
                 @foreach ([
-                    [\App\Enums\StatType::ThreePointMade, '3P', 'made'],
-                    [\App\Enums\StatType::ThreePointMissed, '3P', 'missed'],
                     [\App\Enums\StatType::TwoPointMade, '2P', 'made'],
                     [\App\Enums\StatType::TwoPointMissed, '2P', 'missed'],
+                    [\App\Enums\StatType::ThreePointMade, '3P', 'made'],
+                    [\App\Enums\StatType::ThreePointMissed, '3P', 'missed'],
                     [\App\Enums\StatType::FreeThrowMade, '1P', 'made'],
                     [\App\Enums\StatType::FreeThrowMissed, '1P', 'missed'],
                     [\App\Enums\StatType::DefensiveRebound, \App\Enums\StatType::DefensiveRebound->buttonLines(), 'plain'],
@@ -312,7 +312,7 @@
                             'border-red-700 text-zinc-900' => $tone === 'alert',
                             'border-zinc-300 text-zinc-900' => $tone === 'plain',
                         ])
-                    >@foreach ((array) $statLabel as $line)<span>{{ __($line) }}</span>@endforeach</button>
+                    >@foreach ((array) $statLabel as $line)@continue(__($line) === '')<span>{{ __($line) }}</span>@endforeach</button>
                 @endforeach
             </div>
             </div>
@@ -407,7 +407,7 @@
                     'border-red-700 text-zinc-900' => $tone === 'alert',
                     'border-zinc-300 text-zinc-900' => $tone === 'plain',
                 ])
-            >@foreach ((array) $statLabel as $line)<span>{{ __($line) }}</span>@endforeach</button>
+            >@foreach ((array) $statLabel as $line)@continue(__($line) === '')<span>{{ __($line) }}</span>@endforeach</button>
         @endforeach
         </div>
         <div class="flex min-h-0 flex-1 items-end justify-center gap-3">
