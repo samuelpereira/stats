@@ -180,6 +180,23 @@ test('games index filters by season and team', function () {
         ->assertDontSee('Past Opponent');
 });
 
+test('the games list shows who plays at home and who plays away', function () {
+    $administrator = User::factory()->administrator()->create();
+    $team = Team::factory()->create(['name' => 'North City']);
+    Game::factory()->create([
+        'team_id' => $team->id,
+        'opponent' => 'South Valley',
+        'home_away' => HomeAway::Away,
+    ]);
+
+    Livewire::actingAs($administrator)
+        ->test(GameIndex::class)
+        ->assertSeeInOrder(['At home', 'Away', 'South Valley', 'North City'])
+        ->assertSee('font-bold text-zinc-900">North City', false)
+        ->assertDontSee('font-bold text-zinc-900">South Valley', false)
+        ->assertDontSee('Home or away');
+});
+
 test('a club only sees games of its own teams', function () {
     $club = Club::factory()->create();
     $access = User::factory()->clubAccessFor($club)->create();

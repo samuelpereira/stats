@@ -693,6 +693,23 @@ test('a club member only sees games of their club', function () {
         ->assertDontSee('Oponente Externo');
 });
 
+test('the statistics list shows who plays at home and who plays away', function () {
+    $club = Club::factory()->create();
+    $team = Team::factory()->create(['club_id' => $club->id, 'name' => 'North City']);
+    $member = User::factory()->memberOf($club)->withTeams($team)->create();
+    Game::factory()->create([
+        'team_id' => $team->id,
+        'opponent' => 'South Valley',
+        'home_away' => HomeAway::Away,
+    ]);
+
+    Livewire::actingAs($member)
+        ->test(StatisticsIndex::class)
+        ->assertSeeInOrder(['At home', 'Away', 'South Valley', 'North City'])
+        ->assertSee('font-bold text-zinc-900">North City', false)
+        ->assertDontSee('font-bold text-zinc-900">South Valley', false);
+});
+
 test('the statistics index links played games to the box score and others to collection', function () {
     $club = Club::factory()->create();
     $team = Team::factory()->create(['club_id' => $club->id]);
