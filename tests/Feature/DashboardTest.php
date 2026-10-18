@@ -52,6 +52,27 @@ test('the dashboard shows season summaries and upcoming games for a club', funct
         ->assertSee(__('Teams'));
 });
 
+test('the dashboard lists the home side before the away side', function () {
+    $club = Club::factory()->create();
+    $access = User::factory()->clubAccessFor($club)->create();
+    $season = Season::factory()->current()->create();
+    $team = Team::factory()->create(['club_id' => $club->id, 'season_id' => $season->id, 'name' => 'North City']);
+    Game::factory()->create([
+        'team_id' => $team->id,
+        'opponent' => 'South Valley',
+        'date_time' => now()->addDay(),
+        'status' => GameStatus::Scheduled,
+        'home_away' => HomeAway::Away,
+    ]);
+
+    Livewire::actingAs($access)
+        ->test(Dashboard::class)
+        ->assertSeeInOrder(['South Valley', 'North City'])
+        ->assertSee('font-bold text-zinc-900">North City', false)
+        ->assertDontSee('font-bold text-zinc-900">South Valley', false)
+        ->assertDontSee('At home');
+});
+
 test('the dashboard recent games list only includes past games with a statistics log', function () {
     $club = Club::factory()->create();
     $access = User::factory()->clubAccessFor($club)->create();
