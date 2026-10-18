@@ -153,7 +153,7 @@ class Dashboard extends Component
      */
     private function gamesQuery(): Builder
     {
-        $query = Game::query()->with(['team.season', 'team.club']);
+        $query = Game::query()->with(['team.season', 'team.club'])->withExists('events');
 
         $currentSeason = $this->currentSeason();
 

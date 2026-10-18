@@ -134,6 +134,19 @@ class Game extends Model
         return $this->hasMany(GameEvent::class);
     }
 
+    public function hasCollectedStatistics(): bool
+    {
+        if ($this->status !== GameStatus::Played) {
+            return false;
+        }
+
+        if (array_key_exists('events_exists', $this->attributes)) {
+            return (bool) $this->getAttribute('events_exists');
+        }
+
+        return $this->events()->exists();
+    }
+
     /**
      * @return BelongsToMany<Player, $this>
      */

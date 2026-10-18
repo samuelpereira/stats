@@ -28,6 +28,7 @@ class Index extends Component
     {
         $games = Game::query()
             ->with(['team.season'])
+            ->withExists('events')
             ->orderByDesc('date_time');
 
         $games->forStatisticsCollector($this->actor());

@@ -710,13 +710,19 @@ test('the statistics list shows who plays at home and who plays away', function 
         ->assertDontSee('font-bold text-zinc-900">South Valley', false);
 });
 
-test('the statistics index links played games to the box score and others to collection', function () {
+test('the statistics index links a finished collected game to the box score', function () {
     $club = Club::factory()->create();
     $team = Team::factory()->create(['club_id' => $club->id]);
     $member = User::factory()->memberOf($club)->withTeams($team)->create();
     $played = Game::factory()->create([
         'team_id' => $team->id,
         'opponent' => 'Played Opponent',
+        'status' => GameStatus::Played,
+    ]);
+    GameEvent::factory()->create(['game_id' => $played->id]);
+    $imported = Game::factory()->create([
+        'team_id' => $team->id,
+        'opponent' => 'Imported Opponent',
         'status' => GameStatus::Played,
     ]);
     $scheduled = Game::factory()->create([
@@ -729,6 +735,8 @@ test('the statistics index links played games to the box score and others to col
         ->test(StatisticsIndex::class)
         ->assertSee(route('statistics.show', $played), false)
         ->assertSee(route('statistics.record', $played), false)
+        ->assertSee(route('statistics.record', $imported), false)
+        ->assertDontSee(route('statistics.show', $imported), false)
         ->assertSee(route('statistics.record', $scheduled), false)
         ->assertDontSee(route('statistics.show', $scheduled), false)
         ->assertSeeHtml('wire:key="game-'.$played->uuid.'"')
