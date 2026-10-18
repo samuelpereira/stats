@@ -43,5 +43,6 @@
                 @endforelse
             </tbody>
         </x-listing.table>
+        <x-listing.pagination :paginator="$this->games" />
     </div>
 </div>

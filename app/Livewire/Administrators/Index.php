@@ -6,10 +6,11 @@ use App\Actions\DeleteUser;
 use App\Enums\RoleName;
 use App\Livewire\Concerns\ConfirmsDeletion;
 use App\Livewire\Concerns\InteractsWithAuthenticatedUser;
+use App\Livewire\Concerns\PaginatesListings;
 use App\Models\User;
 use Illuminate\Contracts\View\View;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -17,7 +18,7 @@ use Livewire\Component;
 #[Title('Administrators')]
 class Index extends Component
 {
-    use ConfirmsDeletion, InteractsWithAuthenticatedUser;
+    use ConfirmsDeletion, InteractsWithAuthenticatedUser, PaginatesListings;
 
     public function mount(): void
     {
@@ -25,16 +26,16 @@ class Index extends Component
     }
 
     /**
-     * @return Collection<int, User>
+     * @return LengthAwarePaginator<int, User>
      */
     #[Computed]
-    public function administrators(): Collection
+    public function administrators(): LengthAwarePaginator
     {
         return User::query()
             ->role(RoleName::staff())
             ->with('roles')
             ->orderBy('name')
-            ->get();
+            ->paginate($this->listingPerPage());
     }
 
     protected function deletionModalName(): string

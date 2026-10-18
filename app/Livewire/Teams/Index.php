@@ -6,11 +6,13 @@ use App\Actions\DeleteTeam;
 use App\Enums\PermissionName;
 use App\Livewire\Concerns\ConfirmsDeletion;
 use App\Livewire\Concerns\InteractsWithAuthenticatedUser;
+use App\Livewire\Concerns\PaginatesListings;
 use App\Models\Season;
 use App\Models\Team;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -18,7 +20,7 @@ use Livewire\Component;
 #[Title('Teams')]
 class Index extends Component
 {
-    use ConfirmsDeletion, InteractsWithAuthenticatedUser;
+    use ConfirmsDeletion, InteractsWithAuthenticatedUser, PaginatesListings;
 
     public string $seasonId = '';
 
@@ -35,6 +37,7 @@ class Index extends Component
 
     public function updatedSeasonId(): void
     {
+        $this->resetPage();
         $this->clearListedRecords();
     }
 
@@ -48,10 +51,10 @@ class Index extends Component
     }
 
     /**
-     * @return Collection<int, Team>
+     * @return LengthAwarePaginator<int, Team>
      */
     #[Computed]
-    public function teams(): Collection
+    public function teams(): LengthAwarePaginator
     {
         $actor = $this->actor();
 
@@ -65,7 +68,7 @@ class Index extends Component
             $query->where('season_id', (int) $this->seasonId);
         }
 
-        return $query->get();
+        return $query->paginate($this->listingPerPage());
     }
 
     protected function deletionModalName(): string

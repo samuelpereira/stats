@@ -197,6 +197,29 @@ test('the games list shows who plays at home and who plays away', function () {
         ->assertDontSee('Home or away');
 });
 
+test('changing the games season filter returns to the first page', function () {
+    $administrator = User::factory()->administrator()->create();
+    $currentSeason = Season::factory()->current()->create();
+    $pastSeason = Season::factory()->create(['is_current' => false]);
+    $currentTeam = Team::factory()->create(['season_id' => $currentSeason->id]);
+    $pastTeam = Team::factory()->create(['season_id' => $pastSeason->id]);
+    Game::factory()->create([
+        'team_id' => $currentTeam->id,
+        'opponent' => 'Current Only',
+    ]);
+    Game::factory()->create([
+        'team_id' => $pastTeam->id,
+        'opponent' => 'Past Only',
+    ]);
+
+    Livewire::actingAs($administrator)
+        ->test(GameIndex::class)
+        ->call('nextPage')
+        ->assertDontSee('Past Only')
+        ->set('seasonId', (string) $pastSeason->id)
+        ->assertSee('Past Only');
+});
+
 test('a club only sees games of its own teams', function () {
     $club = Club::factory()->create();
     $access = User::factory()->clubAccessFor($club)->create();

@@ -4,10 +4,11 @@ namespace App\Livewire\Clubs;
 
 use App\Actions\DeleteClub;
 use App\Livewire\Concerns\ConfirmsDeletion;
+use App\Livewire\Concerns\PaginatesListings;
 use App\Models\Club;
 use Illuminate\Contracts\View\View;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -15,7 +16,7 @@ use Livewire\Component;
 #[Title('Clubs')]
 class Index extends Component
 {
-    use ConfirmsDeletion;
+    use ConfirmsDeletion, PaginatesListings;
 
     public function mount(): void
     {
@@ -23,12 +24,12 @@ class Index extends Component
     }
 
     /**
-     * @return Collection<int, Club>
+     * @return LengthAwarePaginator<int, Club>
      */
     #[Computed]
-    public function clubs(): Collection
+    public function clubs(): LengthAwarePaginator
     {
-        return Club::query()->with('access')->orderBy('name')->get();
+        return Club::query()->with('access')->orderBy('name')->paginate($this->listingPerPage());
     }
 
     protected function deletionModalName(): string

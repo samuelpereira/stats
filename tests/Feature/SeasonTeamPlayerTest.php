@@ -433,3 +433,19 @@ test('a club role cannot create a player on another club team', function () {
         ->call('save')
         ->assertForbidden();
 });
+
+test('the clubs list shows fifteen clubs per page', function () {
+    $administrator = User::factory()->administrator()->create();
+
+    foreach (range(1, 16) as $number) {
+        Club::factory()->create(['name' => sprintf('Club %02d', $number)]);
+    }
+
+    Livewire::actingAs($administrator)
+        ->test(ClubIndex::class)
+        ->assertSee('Club 01')
+        ->assertDontSee('Club 16')
+        ->call('nextPage')
+        ->assertSee('Club 16')
+        ->assertDontSee('Club 01');
+});

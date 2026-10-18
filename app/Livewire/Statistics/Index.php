@@ -3,9 +3,10 @@
 namespace App\Livewire\Statistics;
 
 use App\Livewire\Concerns\InteractsWithAuthenticatedUser;
+use App\Livewire\Concerns\PaginatesListings;
 use App\Models\Game;
 use Illuminate\Contracts\View\View;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -13,7 +14,7 @@ use Livewire\Component;
 #[Title('Statistics')]
 class Index extends Component
 {
-    use InteractsWithAuthenticatedUser;
+    use InteractsWithAuthenticatedUser, PaginatesListings;
 
     public function mount(): void
     {
@@ -21,10 +22,10 @@ class Index extends Component
     }
 
     /**
-     * @return Collection<int, Game>
+     * @return LengthAwarePaginator<int, Game>
      */
     #[Computed]
-    public function games(): Collection
+    public function games(): LengthAwarePaginator
     {
         $games = Game::query()
             ->with(['team.season'])
@@ -33,7 +34,7 @@ class Index extends Component
 
         $games->forStatisticsCollector($this->actor());
 
-        return $games->get();
+        return $games->paginate($this->listingPerPage());
     }
 
     public function render(): View

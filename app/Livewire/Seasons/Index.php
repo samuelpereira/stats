@@ -5,11 +5,12 @@ namespace App\Livewire\Seasons;
 use App\Actions\DeleteSeason;
 use App\Actions\MarkSeasonAsCurrent;
 use App\Livewire\Concerns\ConfirmsDeletion;
+use App\Livewire\Concerns\PaginatesListings;
 use App\Models\Season;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -17,7 +18,7 @@ use Livewire\Component;
 #[Title('Seasons')]
 class Index extends Component
 {
-    use ConfirmsDeletion;
+    use ConfirmsDeletion, PaginatesListings;
 
     public function mount(): void
     {
@@ -36,12 +37,12 @@ class Index extends Component
     }
 
     /**
-     * @return Collection<int, Season>
+     * @return LengthAwarePaginator<int, Season>
      */
     #[Computed]
-    public function seasons(): Collection
+    public function seasons(): LengthAwarePaginator
     {
-        return Season::query()->withCount('teams')->orderByDesc('starts_at')->get();
+        return Season::query()->withCount('teams')->orderByDesc('starts_at')->paginate($this->listingPerPage());
     }
 
     protected function deletionModalName(): string

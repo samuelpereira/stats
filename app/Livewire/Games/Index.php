@@ -6,6 +6,7 @@ use App\Actions\DeleteGame;
 use App\Enums\PermissionName;
 use App\Livewire\Concerns\ConfirmsDeletion;
 use App\Livewire\Concerns\InteractsWithAuthenticatedUser;
+use App\Livewire\Concerns\PaginatesListings;
 use App\Models\Game;
 use App\Models\Season;
 use App\Models\Team;
@@ -13,6 +14,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -20,7 +22,7 @@ use Livewire\Component;
 #[Title('Games')]
 class Index extends Component
 {
-    use ConfirmsDeletion, InteractsWithAuthenticatedUser;
+    use ConfirmsDeletion, InteractsWithAuthenticatedUser, PaginatesListings;
 
     public string $seasonId = '';
 
@@ -40,11 +42,13 @@ class Index extends Component
     public function updatedSeasonId(): void
     {
         $this->teamId = '';
+        $this->resetPage();
         $this->clearListedRecords();
     }
 
     public function updatedTeamId(): void
     {
+        $this->resetPage();
         $this->clearListedRecords();
     }
 
@@ -79,10 +83,10 @@ class Index extends Component
     }
 
     /**
-     * @return Collection<int, Game>
+     * @return LengthAwarePaginator<int, Game>
      */
     #[Computed]
-    public function games(): Collection
+    public function games(): LengthAwarePaginator
     {
         $actor = $this->actor();
 
@@ -100,7 +104,7 @@ class Index extends Component
             $query->where('team_id', (int) $this->teamId);
         }
 
-        return $query->get();
+        return $query->paginate($this->listingPerPage());
     }
 
     public function render(): View

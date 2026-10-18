@@ -51,6 +51,8 @@
         </tbody>
     </x-listing.table>
 
+    <x-listing.pagination :paginator="$this->users" />
+
     <x-slot:modal>
         <x-listing.delete-modal
             name="confirm-delete"

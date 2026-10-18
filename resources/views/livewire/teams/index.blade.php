@@ -52,6 +52,8 @@
         </tbody>
     </x-listing.table>
 
+    <x-listing.pagination :paginator="$this->teams" />
+
     <x-slot:modal>
         <x-listing.delete-modal
             name="confirm-delete"

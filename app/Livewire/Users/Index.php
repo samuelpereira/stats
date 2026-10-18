@@ -7,10 +7,11 @@ use App\Enums\PermissionName;
 use App\Enums\RoleName;
 use App\Livewire\Concerns\ConfirmsDeletion;
 use App\Livewire\Concerns\InteractsWithAuthenticatedUser;
+use App\Livewire\Concerns\PaginatesListings;
 use App\Models\User;
 use Illuminate\Contracts\View\View;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -18,7 +19,7 @@ use Livewire\Component;
 #[Title('Users')]
 class Index extends Component
 {
-    use ConfirmsDeletion, InteractsWithAuthenticatedUser;
+    use ConfirmsDeletion, InteractsWithAuthenticatedUser, PaginatesListings;
 
     public function mount(): void
     {
@@ -26,10 +27,10 @@ class Index extends Component
     }
 
     /**
-     * @return Collection<int, User>
+     * @return LengthAwarePaginator<int, User>
      */
     #[Computed]
-    public function users(): Collection
+    public function users(): LengthAwarePaginator
     {
         $actor = $this->actor();
 
@@ -39,7 +40,7 @@ class Index extends Component
             $query->where('club_id', $actor->club_id);
         }
 
-        return $query->get();
+        return $query->paginate($this->listingPerPage());
     }
 
     protected function deletionModalName(): string

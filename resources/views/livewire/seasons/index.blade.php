@@ -45,6 +45,8 @@
         </tbody>
     </x-listing.table>
 
+    <x-listing.pagination :paginator="$this->seasons" />
+
     <x-slot:modal>
         <x-listing.delete-modal
             name="confirm-delete"
