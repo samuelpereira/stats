@@ -417,7 +417,7 @@ test('a recorded foul is shown beside the player', function () {
         ->call('select', StatType::Foul->value)
         ->call('record', $player->id)
         ->assertSee('Alex North')
-        ->assertSee('1 FP')
+        ->assertSee('">1</span> FP', false)
         ->assertSee('foul')
         ->assertSee('(1)');
 });
@@ -471,19 +471,19 @@ test('personal fouls are green through three, orange on four, and red from five'
             ->call('record', $player->id);
     }
 
-    expect($screen->html())->toContain('text-green-700">3 FP')
-        ->and($screen->html())->not->toContain('text-red-700">3 FP');
+    expect($screen->html())->toContain('">3</span> FP')
+        ->and($screen->html())->not->toContain('">5</span> FP');
 
     $screen->call('select', StatType::Foul->value)
         ->call('record', $player->id);
 
-    expect($screen->html())->toContain('text-orange-600">4 FP')
-        ->and($screen->html())->not->toContain('text-red-700">4 FP');
+    expect($screen->html())->toContain('">4</span> FP')
+        ->and($screen->html())->not->toContain('">5</span> FP');
 
     $screen->call('select', StatType::Foul->value)
         ->call('record', $player->id);
 
-    expect($screen->html())->toContain('text-red-700">5 FP');
+    expect($screen->html())->toContain('">5</span> FP');
 });
 
 test('team fouls are green through three and orange on the fourth', function () {
@@ -503,15 +503,15 @@ test('team fouls are green through three and orange on the fourth', function () 
             ->call('record', $player->id);
     }
 
-    expect($screen->html())->toContain('font-bold tabular-nums text-green-700">3</span>')
-        ->and($screen->html())->not->toContain('font-bold tabular-nums text-orange-600')
-        ->and($screen->html())->not->toContain('font-bold tabular-nums text-red-700');
+    expect($screen->html())->toContain('teamFoulCount()">3</span>')
+        ->and($screen->html())->not->toContain('teamFoulCount()">4</span>')
+        ->and($screen->html())->not->toContain('teamFoulCount()">5</span>');
 
     $screen->call('select', StatType::Foul->value)
         ->call('record', $player->id);
 
-    expect($screen->html())->toContain('font-bold tabular-nums text-orange-600">4</span>')
-        ->and($screen->html())->not->toContain('font-bold tabular-nums text-red-700');
+    expect($screen->html())->toContain('teamFoulCount()">4</span>')
+        ->and($screen->html())->not->toContain('teamFoulCount()">5</span>');
 });
 
 test('team fouls restart each period', function () {
@@ -531,19 +531,19 @@ test('team fouls restart each period', function () {
             ->call('record', $player->id);
     }
 
-    $screen->assertSee('font-bold tabular-nums text-red-700">5</span>', false)
-        ->assertSee('5 FP')
+    $screen->assertSee('teamFoulCount()">5</span>', false)
+        ->assertSee('">5</span> FP', false)
         ->set('clock', '00:00')
         ->call('endQuarter')
         ->call('startQuarter')
-        ->assertDontSee('font-bold tabular-nums text-red-700">5</span>', false)
-        ->assertSee('font-bold tabular-nums text-zinc-900">0</span>', false)
-        ->assertSee('0 FP')
+        ->assertDontSee('teamFoulCount()">5</span>', false)
+        ->assertSee('teamFoulCount()">0</span>', false)
+        ->assertSee('">0</span> FP', false)
         ->call('select', StatType::Foul->value)
         ->call('record', $player->id)
         ->assertDontSee('Free throw 1 of 2')
-        ->assertSee('font-bold tabular-nums text-green-700">1</span>', false)
-        ->assertSee('1 FP');
+        ->assertSee('teamFoulCount()">1</span>', false)
+        ->assertSee('">1</span> FP', false);
 
     expect($game->teamFoulsByQuarter()[1])->toBe(['home' => 5, 'away' => 0])
         ->and($game->teamFoulsByQuarter()[2])->toBe(['home' => 1, 'away' => 0]);
@@ -583,12 +583,12 @@ test('a foul recorded during the first period does not count in the next one', f
 
     statisticsRecord($member, $game)
         ->set('quarter', 2)
-        ->assertDontSee('font-bold tabular-nums text-green-700">1</span>', false)
-        ->assertSee('font-bold tabular-nums text-zinc-900">0</span>', false)
-        ->assertSee('0 FP')
+        ->assertDontSee('teamFoulCount()">1</span>', false)
+        ->assertSee('teamFoulCount()">0</span>', false)
+        ->assertSee('">0</span> FP', false)
         ->set('quarter', 1)
-        ->assertSee('font-bold tabular-nums text-green-700">1</span>', false)
-        ->assertSee('1 FP');
+        ->assertSee('teamFoulCount()">1</span>', false)
+        ->assertSee('">1</span> FP', false);
 });
 
 test('a fifth team foul stays on the collector so a one can be marked', function () {
@@ -934,24 +934,24 @@ test('a timeout count turns red when the half allowance is used', function () {
     $screen = statisticsRecord($member, $game)
         ->call('recordTimeout', 'home');
 
-    expect($screen->html())->toContain('font-bold tabular-nums text-zinc-900">1/2</span>')
-        ->and($screen->html())->not->toContain('text-red-700">2/2</span>');
+    expect($screen->html())->toContain('timeoutAllowance()">1/2</span>')
+        ->and($screen->html())->not->toContain('">2/2</span>');
 
     $screen->call('recordTimeout', 'home');
 
-    expect($screen->html())->toContain('font-bold tabular-nums text-red-700">2/2</span>');
+    expect($screen->html())->toContain('timeoutAllowance()">2/2</span>');
 
     $screen->set('quarter', 3)
         ->call('recordQuarterStart');
 
-    expect($screen->html())->toContain('font-bold tabular-nums text-zinc-900">0/3</span>')
-        ->and($screen->html())->not->toContain('text-red-700">3/3</span>');
+    expect($screen->html())->toContain('timeoutAllowance()">0/3</span>')
+        ->and($screen->html())->not->toContain('">3/3</span>');
 
     foreach (range(1, 3) as $ignored) {
         $screen->call('recordTimeout', 'home');
     }
 
-    expect($screen->html())->toContain('font-bold tabular-nums text-red-700">3/3</span>');
+    expect($screen->html())->toContain('timeoutAllowance()">3/3</span>');
 });
 
 test('an unknown timeout side is not stored', function () {
@@ -1554,7 +1554,7 @@ test('the collector asks for the players and the starting five before the pad', 
 
     $screen = statisticsRecord($member, $game)
         ->assertSee('Players in this game')
-        ->assertDontSee('Foul');
+        ->assertDontSee('>Foul<', false);
 
     foreach ($players->take(4) as $player) {
         $screen->call('toggleSquadPlayer', $player->id);
@@ -1585,7 +1585,7 @@ test('the collector asks for the players and the starting five before the pad', 
 
     $screen->call('toggleStarter', $players[4]->id)
         ->call('saveStarters')
-        ->assertSee('Foul')
+        ->assertSee('>Foul<', false)
         ->assertDontSee('Change lineup');
 });
 

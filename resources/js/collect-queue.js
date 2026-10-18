@@ -318,6 +318,107 @@ function createCollectQueue() {
             return this.local?.opponentPoints ?? this.baseline?.opponentPoints ?? 0;
         },
 
+        currentQuarter() {
+            return Number(this.local?.quarter ?? this.baseline?.quarter ?? 1);
+        },
+
+        timeoutQuarters(quarter) {
+            const period = Number(quarter);
+
+            if (period <= 2) {
+                return [1, 2];
+            }
+
+            if (period <= 4) {
+                return [3, 4];
+            }
+
+            return [period];
+        },
+
+        timeoutAllowance() {
+            const quarter = this.currentQuarter();
+
+            if (quarter <= 2) {
+                return 2;
+            }
+
+            if (quarter <= 4) {
+                return 3;
+            }
+
+            return 1;
+        },
+
+        sameTimeoutWindow() {
+            return this.timeoutQuarters(this.currentQuarter())[0] === this.timeoutQuarters(this.baseline?.quarter)[0];
+        },
+
+        queuedFouls(forOpponent) {
+            const quarter = this.currentQuarter();
+
+            return this.items.filter((item) => item.operation === 'record'
+                && item.payload.type === 'foul'
+                && Boolean(item.payload.forOpponent) === forOpponent
+                && Number(item.payload.quarter) === quarter).length;
+        },
+
+        teamFoulCount() {
+            const recorded = Number(this.baseline?.quarter) === this.currentQuarter()
+                ? Number(this.baseline?.teamFouls ?? 0)
+                : 0;
+
+            return recorded + this.queuedFouls(false);
+        },
+
+        opponentFoulCount() {
+            const recorded = Number(this.baseline?.quarter) === this.currentQuarter()
+                ? Number(this.baseline?.opponentFouls ?? 0)
+                : 0;
+
+            return recorded + this.queuedFouls(true);
+        },
+
+        queuedTimeouts(ours) {
+            const quarters = new Set(this.timeoutQuarters(this.currentQuarter()));
+
+            return this.items.filter((item) => item.operation === 'timeout'
+                && quarters.has(Number(item.payload.quarter))
+                && (item.payload.side === this.baseline?.homeAway) === ours).length;
+        },
+
+        teamTimeoutCount() {
+            const recorded = this.sameTimeoutWindow() ? Number(this.baseline?.teamTimeouts ?? 0) : 0;
+
+            return recorded + this.queuedTimeouts(true);
+        },
+
+        opponentTimeoutCount() {
+            const recorded = this.sameTimeoutWindow() ? Number(this.baseline?.opponentTimeouts ?? 0) : 0;
+
+            return recorded + this.queuedTimeouts(false);
+        },
+
+        foulTone(count) {
+            if (count >= 5) {
+                return 'text-red-700';
+            }
+
+            if (count === 4) {
+                return 'text-orange-600';
+            }
+
+            if (count >= 1) {
+                return 'text-green-700';
+            }
+
+            return 'text-zinc-900';
+        },
+
+        timeoutTone(count) {
+            return count >= this.timeoutAllowance() ? 'text-red-700' : 'text-zinc-900';
+        },
+
         gameFinished() {
             return Boolean(this.baseline?.finished);
         },

@@ -328,7 +328,7 @@
                     <span x-cloak x-show="$store.collectQueue.onCourt({{ $player->id }})" class="shrink-0 text-[11px] font-medium text-zinc-500">{{ __('On court') }}</span>
                     <span class="shrink-0 text-xs font-medium tabular-nums text-zinc-500">{{ intdiv($played, 60) }}:{{ sprintf('%02d', $played % 60) }}</span>
                     @php($personalFouls = $this->fouls['players'][$player->id] ?? 0)
-                    <span @class(['shrink-0 text-sm font-medium tabular-nums', 'text-green-700' => $personalFouls >= 1 && $personalFouls <= 3, 'text-orange-600' => $personalFouls === 4, 'text-red-700' => $personalFouls >= 5])>{{ $personalFouls }} {{ __('FP') }}</span>
+                    <span class="shrink-0 text-sm font-medium tabular-nums" :class="$store.collectQueue.foulTone($store.collectQueue.foulCount({{ $player->id }}))"><span x-text="$store.collectQueue.foulCount({{ $player->id }})">{{ $personalFouls }}</span> {{ __('FP') }}</span>
                 </div>
             @endforeach
         </div>
@@ -446,7 +446,7 @@
                     <span x-cloak x-show="$store.collectQueue.onCourt({{ $player->id }})" class="shrink-0 text-[11px] font-medium text-zinc-500">{{ __('On court') }}</span>
                     <span class="shrink-0 text-xs font-medium tabular-nums text-zinc-500">{{ intdiv($played, 60) }}:{{ sprintf('%02d', $played % 60) }}</span>
                     @php($personalFouls = $this->fouls['players'][$player->id] ?? 0)
-                    <span @class(['shrink-0 text-sm font-medium tabular-nums', 'text-green-700' => $personalFouls >= 1 && $personalFouls <= 3, 'text-orange-600' => $personalFouls === 4, 'text-red-700' => $personalFouls >= 5])>{{ $personalFouls }} {{ __('FP') }}</span>
+                    <span class="shrink-0 text-sm font-medium tabular-nums" :class="$store.collectQueue.foulTone($store.collectQueue.foulCount({{ $player->id }}))"><span x-text="$store.collectQueue.foulCount({{ $player->id }})">{{ $personalFouls }}</span> {{ __('FP') }}</span>
                 </div>
             @endforeach
         </div>
