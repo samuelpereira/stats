@@ -85,8 +85,7 @@ class Show extends Component
         $boxScore = $this->game->boxScore();
         $pointsByQuarter = $this->game->pointsByQuarter();
         $weAreHome = $this->game->home_away === HomeAway::Home;
-        $periodFouls = $this->game->teamFoulsByQuarter()[$this->game->openPeriod()]
-            ?? ['home' => 0, 'away' => 0];
+        $periodFouls = $this->game->teamFoulsForPeriod($this->game->openPeriod());
 
         $periods = [];
         $homeTotal = 0;

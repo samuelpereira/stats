@@ -763,18 +763,69 @@ test('team fouls restart each period', function () {
         ->call('startQuarter')
         ->assertDontSee('teamFoulCount()">5</span>', false)
         ->assertSee('teamFoulCount()">0</span>', false)
-        ->assertSee('">0</span> FP', false)
+        ->assertSee('">5</span> FP', false)
         ->call('select', StatType::Foul->value)
         ->call('record', $player->id)
         ->assertDontSee('Free throw 1 of 2')
         ->assertSee('teamFoulCount()">1</span>', false)
-        ->assertSee('">1</span> FP', false);
+        ->assertSee('">6</span> FP', false);
 
     expect($game->teamFoulsByQuarter()[1])->toBe(['home' => 5, 'away' => 0])
         ->and($game->teamFoulsByQuarter()[2])->toBe(['home' => 1, 'away' => 0]);
 });
 
-test('a foul recorded during the first period does not count in the next one', function () {
+test('team fouls carry from the fourth quarter through overtime', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    $screen = statisticsRecord($member, $game);
+
+    foreach (range(1, 3) as $ignored) {
+        $screen->set('clock', '00:00')
+            ->call('endQuarter')
+            ->call('startQuarter');
+    }
+
+    foreach (range(1, 3) as $ignored) {
+        $screen->call('select', StatType::Foul->value)
+            ->call('record', $player->id);
+    }
+
+    $screen->assertSee('teamFoulCount()">3</span>', false)
+        ->assertSee('">3</span> FP', false)
+        ->set('clock', '00:00')
+        ->call('endQuarter')
+        ->call('startQuarter')
+        ->assertSee('teamFoulCount()">3</span>', false)
+        ->assertSee('">3</span> FP', false)
+        ->call('select', StatType::Foul->value)
+        ->call('record', $player->id)
+        ->assertSee('teamFoulCount()">4</span>', false)
+        ->assertSee('">4</span> FP', false)
+        ->set('clock', '00:00')
+        ->call('endQuarter')
+        ->call('startQuarter')
+        ->assertSee('teamFoulCount()">4</span>', false)
+        ->assertSee('">4</span> FP', false)
+        ->call('select', StatType::Foul->value)
+        ->call('record', $player->id)
+        ->assertSee('teamFoulCount()">5</span>', false)
+        ->assertSee('">5</span> FP', false);
+
+    expect($game->teamFoulsByQuarter()[4])->toBe(['home' => 3, 'away' => 0])
+        ->and($game->teamFoulsByQuarter()[5])->toBe(['home' => 1, 'away' => 0])
+        ->and($game->teamFoulsByQuarter()[6])->toBe(['home' => 1, 'away' => 0])
+        ->and($game->teamFoulsForPeriod(5))->toBe(['home' => 4, 'away' => 0])
+        ->and($game->teamFoulsForPeriod(6))->toBe(['home' => 5, 'away' => 0]);
+});
+
+test('a team foul recorded during the first period does not count in the next one', function () {
     $club = Club::factory()->create();
     $member = User::factory()->memberOf($club)->create();
     $game = Game::factory()->create([
@@ -810,7 +861,7 @@ test('a foul recorded during the first period does not count in the next one', f
         ->set('quarter', 2)
         ->assertDontSee('teamFoulCount()">1</span>', false)
         ->assertSee('teamFoulCount()">0</span>', false)
-        ->assertSee('">0</span> FP', false)
+        ->assertSee('">1</span> FP', false)
         ->set('quarter', 1)
         ->assertSee('teamFoulCount()">1</span>', false)
         ->assertSee('">1</span> FP', false);
@@ -1579,7 +1630,7 @@ test('the quarter clock does not start again while it is already running', funct
         ->assertSet('clock', '08:00');
 });
 
-test('a decided fourth quarter can continue as the next quarter', function () {
+test('a decided fourth quarter can continue as the next period', function () {
     $club = Club::factory()->create();
     $member = User::factory()->memberOf($club)->create();
     $game = Game::factory()->create([
@@ -1599,31 +1650,32 @@ test('a decided fourth quarter can continue as the next quarter', function () {
         ->assertSet('clock', '00:00')
         ->assertSet('quarterEnded', false)
         ->assertSet('awaitingQuarterStart', true)
-        ->assertSee('Start of Q5')
-        ->assertSee('Start Q5')
+        ->assertSee('Start of OT1')
+        ->assertSee('Start OT1')
         ->assertSee('end of Q4')
-        ->assertDontSee('Start of OT1');
+        ->assertDontSee('Start of Q5');
 
     statisticsRecord($member, $game, false)
         ->assertSet('quarter', 5)
         ->assertSet('awaitingQuarterStart', true)
-        ->assertSee('Start of Q5');
+        ->assertSee('Start of OT1');
 
     $screen->call('startQuarter')
         ->assertSet('quarter', 5)
         ->assertSet('clock', '10:00')
-        ->assertSee('Q5')
-        ->assertSee('start of Q5')
+        ->assertSee('OT1')
+        ->assertSee('start of OT1')
         ->set('clock', '00:00')
         ->call('endQuarter')
         ->assertSet('quarter', 6)
-        ->assertSee('Start of Q6')
-        ->assertDontSee('Start of OT2')
+        ->assertSee('Start of OT2')
+        ->assertDontSee('Start of Q6')
         ->call('startQuarter')
         ->set('clock', '00:00')
         ->call('endQuarter')
         ->assertSet('quarter', 7)
-        ->assertSee('Start of Q7');
+        ->assertSee('Start of OT3')
+        ->assertDontSee('Start of Q7');
 
     $started = GameEvent::query()->where('type', StatType::QuarterStarted)->orderBy('id')->get();
 
@@ -1696,22 +1748,36 @@ test('a tied overtime continues into the next overtime', function () {
         ->assertSet('quarter', 6)
         ->assertSet('awaitingQuarterStart', true)
         ->assertSee('Start of OT2')
+        ->assertDontSee('Start of Q6')
         ->call('startQuarter')
         ->assertSet('quarter', 6)
         ->assertSet('clock', '05:00')
-        ->assertSee('start of OT2');
+        ->assertSee('OT2')
+        ->assertSee('start of OT2')
+        ->set('clock', '00:00')
+        ->call('endQuarter')
+        ->assertSet('quarter', 7)
+        ->assertSee('Start of OT3')
+        ->assertDontSee('Start of Q7')
+        ->call('startQuarter')
+        ->assertSet('quarter', 7)
+        ->assertSet('clock', '05:00')
+        ->assertSee('OT3')
+        ->assertSee('start of OT3');
 
     $started = GameEvent::query()->where('type', StatType::QuarterStarted)->orderBy('id')->get();
 
-    expect($started)->toHaveCount(3)
+    expect($started)->toHaveCount(4)
         ->and($started[0]->quarter)->toBe(1)
         ->and($started[1]->quarter)->toBe(5)
         ->and($started[1]->clock)->toBe('05:00')
         ->and($started[2]->quarter)->toBe(6)
-        ->and($started[2]->clock)->toBe('05:00');
+        ->and($started[2]->clock)->toBe('05:00')
+        ->and($started[3]->quarter)->toBe(7)
+        ->and($started[3]->clock)->toBe('05:00');
 });
 
-test('a lead after overtime continues as the next quarter', function () {
+test('a lead after overtime continues as the next period', function () {
     $club = Club::factory()->create();
     $member = User::factory()->memberOf($club)->create();
     $game = Game::factory()->create([
@@ -1733,12 +1799,12 @@ test('a lead after overtime continues as the next quarter', function () {
         ->assertSet('quarter', 6)
         ->assertSet('awaitingQuarterStart', true)
         ->assertSee('end of OT1')
-        ->assertSee('Start of Q6')
-        ->assertDontSee('Start of OT2')
+        ->assertSee('Start of OT2')
+        ->assertDontSee('Start of Q6')
         ->call('startQuarter')
         ->assertSet('quarter', 6)
         ->assertSet('clock', '10:00')
-        ->assertSee('start of Q6');
+        ->assertSee('start of OT2');
 
     $started = GameEvent::query()->where('type', StatType::QuarterStarted)->orderBy('id')->get();
 

@@ -1135,6 +1135,7 @@ class Record extends Component
     public function fouls(): array
     {
         $periods = $this->game->periodsByEventId();
+        $window = $this->game->teamFoulQuarters($this->quarter);
         $events = $this->collectedEvents()->where('type', StatType::Foul);
 
         $players = [];
@@ -1142,17 +1143,20 @@ class Record extends Component
         $opponent = 0;
 
         foreach ($events as $event) {
-            if (($periods[$event->id] ?? 1) !== $this->quarter) {
-                continue;
-            }
+            $period = $periods[$event->id] ?? 1;
+            $inWindow = in_array($period, $window, true);
 
             if (! $this->game->isOurSide($event->home_away)) {
-                $opponent++;
+                if ($inWindow) {
+                    $opponent++;
+                }
 
                 continue;
             }
 
-            $team++;
+            if ($inWindow) {
+                $team++;
+            }
 
             if ($event->player_id === null) {
                 continue;
@@ -1794,11 +1798,16 @@ class Record extends Component
 
     private function periodName(int $quarter): string
     {
-        if ($this->periodIsOvertime($quarter)) {
-            return 'OT'.($quarter - 4);
+        if ($quarter > 4) {
+            return 'OT'.$this->overtimeNumber($quarter);
         }
 
         return 'Q'.$quarter;
+    }
+
+    private function overtimeNumber(int $quarter): int
+    {
+        return $quarter - 4;
     }
 
     private function awaitingPeriodLabel(): string
@@ -1807,8 +1816,8 @@ class Record extends Component
             return $this->periodName($this->quarter - 1);
         }
 
-        if ($this->periodIsOvertime($this->quarter)) {
-            return __('Start of OT:overtime', ['overtime' => $this->quarter - 4]);
+        if ($this->quarter > 4) {
+            return __('Start of OT:overtime', ['overtime' => $this->overtimeNumber($this->quarter)]);
         }
 
         return __('Start of Q:quarter', ['quarter' => $this->quarter]);
@@ -1816,8 +1825,8 @@ class Record extends Component
 
     private function startPeriodAction(): string
     {
-        if ($this->periodIsOvertime($this->quarter)) {
-            return __('Start OT:overtime', ['overtime' => $this->quarter - 4]);
+        if ($this->quarter > 4) {
+            return __('Start OT:overtime', ['overtime' => $this->overtimeNumber($this->quarter)]);
         }
 
         return __('Start Q:quarter', ['quarter' => $this->quarter]);
@@ -1825,8 +1834,8 @@ class Record extends Component
 
     private function endPeriodAction(): string
     {
-        if ($this->periodIsOvertime($this->quarter)) {
-            return __('End OT:overtime', ['overtime' => $this->quarter - 4]);
+        if ($this->quarter > 4) {
+            return __('End OT:overtime', ['overtime' => $this->overtimeNumber($this->quarter)]);
         }
 
         return __('End Q:quarter', ['quarter' => $this->quarter]);
@@ -1834,8 +1843,8 @@ class Record extends Component
 
     private function endPeriodQuestion(): string
     {
-        if ($this->periodIsOvertime($this->quarter)) {
-            return __('Do you want to end OT:overtime?', ['overtime' => $this->quarter - 4]);
+        if ($this->quarter > 4) {
+            return __('Do you want to end OT:overtime?', ['overtime' => $this->overtimeNumber($this->quarter)]);
         }
 
         return __('Do you want to end Q:quarter?', ['quarter' => $this->quarter]);
@@ -1843,21 +1852,17 @@ class Record extends Component
 
     private function quarterTitle(): string
     {
-        if ($this->periodIsOvertime($this->quarter)) {
-            return __('End OT:overtime', ['overtime' => $this->quarter - 4]);
+        if ($this->quarter > 4) {
+            return __('End OT:overtime', ['overtime' => $this->overtimeNumber($this->quarter)]);
         }
 
-        if ($this->quarter <= 4) {
-            return __('End '.$this->quarterOrdinal().' quarter');
-        }
-
-        return __('End Q:quarter', ['quarter' => $this->quarter]);
+        return __('End '.$this->quarterOrdinal().' quarter');
     }
 
     private function periodMarkerLabel(bool $started, int $quarter): string
     {
-        if ($this->periodIsOvertime($quarter)) {
-            $overtime = $quarter - 4;
+        if ($quarter > 4) {
+            $overtime = $this->overtimeNumber($quarter);
 
             return $started
                 ? __('start of OT:overtime', ['overtime' => $overtime])

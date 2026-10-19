@@ -240,18 +240,8 @@
                                     'border-zinc-300 bg-white hover:border-zinc-900' => ! in_array($player->id, $courtSelection, true),
                                 ])
                             >
-                                <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 sm:size-14">
-                                    <flux:icon name="user" class="size-5 sm:size-7" />
-                                </span>
-                                <span class="min-w-0 flex-1">
-                                    <span class="block truncate text-sm font-semibold leading-snug sm:text-base">
-                                        @if ($player->number !== null)
-                                            <span class="tabular-nums">#{{ $player->number }}</span>
-                                            <span class="mx-1 text-zinc-400">·</span>
-                                        @endif
-                                        {{ $player->name }}
-                                    </span>
-                                </span>
+                                <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 bg-zinc-900 text-base font-bold tabular-nums text-white sm:size-14 sm:text-lg">{{ $player->number ?? '—' }}</span>
+                                <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{{ $player->name }}</span>
                                 @php($personalFouls = $this->fouls['players'][$player->id] ?? 0)
                                 @if ($personalFouls > 0)
                                     <span class="flex shrink-0 items-center gap-1">
@@ -472,10 +462,8 @@
         <div class="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
             <template x-for="player in $store.collectQueue.courtPlayers()" :key="player.id">
                 <button type="button" x-on:click="$store.collectQueue.recordPlayer(player.id)" class="flex w-full items-center gap-3 rounded-lg border border-zinc-300 bg-white px-3 py-3 text-left hover:border-zinc-900 sm:rounded-xl sm:py-4">
-                    <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 sm:size-14">
-                        <flux:icon name="user" class="size-5 sm:size-7" />
-                    </span>
-                    <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base" x-text="player.label"></span>
+                    <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 bg-zinc-900 text-base font-bold tabular-nums text-white sm:size-14 sm:text-lg" x-text="player.number ?? '—'"></span>
+                    <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base" x-text="player.name"></span>
                     <span x-cloak x-show="$store.collectQueue.pendingType === 'foul' && $store.collectQueue.foulCount(player.id) > 0" class="flex shrink-0 items-center gap-1">
                         <template x-for="mark in $store.collectQueue.foulMarks(player.id)" :key="mark">
                             <span
@@ -558,10 +546,8 @@
         <div class="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3">
             <template x-for="player in $store.collectQueue.courtPlayers()" :key="'sub-court-' + player.id">
                 <button type="button" x-on:click="$store.collectQueue.toggleCourt(player.id)" class="flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4" :class="$store.collectQueue.courtSelection.includes(player.id) ? 'border-zinc-900 bg-amber-100' : 'border-zinc-300 bg-white'">
-                    <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 sm:size-14">
-                        <flux:icon name="user" class="size-5 sm:size-7" />
-                    </span>
-                    <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base" x-text="player.label"></span>
+                    <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 bg-zinc-900 text-base font-bold tabular-nums text-white sm:size-14 sm:text-lg" x-text="player.number ?? '—'"></span>
+                    <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base" x-text="player.name"></span>
                     <span x-cloak x-show="$store.collectQueue.foulCount(player.id) > 0" class="flex shrink-0 items-center gap-1">
                         <template x-for="mark in $store.collectQueue.foulMarks(player.id)" :key="mark">
                             <span
@@ -581,10 +567,8 @@
             <div class="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3">
                 <template x-for="player in $store.collectQueue.benchPlayers()" :key="'sub-bench-' + player.id">
                     <button type="button" x-on:click="$store.collectQueue.toggleCourt(player.id)" class="flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4" :class="$store.collectQueue.courtSelection.includes(player.id) ? 'border-zinc-900 bg-amber-100' : 'border-zinc-300 bg-white'">
-                        <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 sm:size-14">
-                            <flux:icon name="user" class="size-5 sm:size-7" />
-                        </span>
-                        <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base" x-text="player.label"></span>
+                        <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 bg-zinc-900 text-base font-bold tabular-nums text-white sm:size-14 sm:text-lg" x-text="player.number ?? '—'"></span>
+                        <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base" x-text="player.name"></span>
                         <span x-cloak x-show="$store.collectQueue.foulCount(player.id) > 0" class="flex shrink-0 items-center gap-1">
                             <template x-for="mark in $store.collectQueue.foulMarks(player.id)" :key="mark">
                                 <span
@@ -647,7 +631,8 @@
         <div class="mt-6 flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
             <template x-for="player in $store.collectQueue.baseline?.roster ?? []" :key="'edit-' + player.id">
                 <button type="button" x-on:click="$store.collectQueue.editingPlayerId = player.id; $store.collectQueue.editingForOpponent = false" class="flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4" :class="! $store.collectQueue.editingForOpponent && $store.collectQueue.editingPlayerId === player.id ? 'border-zinc-900 bg-amber-100' : 'border-zinc-300 bg-white'">
-                    <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base" x-text="player.label"></span>
+                    <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 bg-zinc-900 text-base font-bold tabular-nums text-white sm:size-14 sm:text-lg" x-text="player.number ?? '—'"></span>
+                    <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base" x-text="player.name"></span>
                 </button>
             </template>
             <button type="button" x-on:click="$store.collectQueue.editingPlayerId = null; $store.collectQueue.editingForOpponent = true" class="flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4" :class="$store.collectQueue.editingForOpponent ? 'border-zinc-900 bg-amber-100' : 'border-zinc-300 bg-white'">
@@ -702,18 +687,8 @@
                             wire:target="record, recordOpponent, recordShotLocation"
                             class="flex w-full items-center gap-3 rounded-lg border border-zinc-300 bg-white px-3 py-3 text-left hover:border-zinc-900 sm:rounded-xl sm:py-4"
                         >
-                            <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 sm:size-14">
-                                <flux:icon name="user" class="size-5 sm:size-7" />
-                            </span>
-                            <span class="min-w-0 flex-1">
-                                <span class="block truncate text-sm font-semibold leading-snug sm:text-base">
-                                    @if ($player->number !== null)
-                                        <span class="tabular-nums">#{{ $player->number }}</span>
-                                        <span class="mx-1 text-zinc-400">·</span>
-                                    @endif
-                                    {{ $player->name }}
-                                </span>
-                            </span>
+                            <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 bg-zinc-900 text-base font-bold tabular-nums text-white sm:size-14 sm:text-lg">{{ $player->number ?? '—' }}</span>
+                            <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{{ $player->name }}</span>
                             @if ($pendingStat === \App\Enums\StatType::Foul)
                                 @php($personalFouls = $this->fouls['players'][$player->id] ?? 0)
                                 @if ($personalFouls > 0)
@@ -900,18 +875,8 @@
                                 'border-zinc-300 bg-white hover:border-zinc-900' => $editingForOpponent || $editingPlayerId !== $player->id,
                             ])
                         >
-                            <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 sm:size-14">
-                                <flux:icon name="user" class="size-5 sm:size-7" />
-                            </span>
-                            <span class="min-w-0 flex-1">
-                                <span class="block truncate text-sm font-semibold leading-snug sm:text-base">
-                                    @if ($player->number !== null)
-                                        <span class="tabular-nums">#{{ $player->number }}</span>
-                                        <span class="mx-1 text-zinc-400">·</span>
-                                    @endif
-                                    {{ $player->name }}
-                                </span>
-                            </span>
+                            <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 bg-zinc-900 text-base font-bold tabular-nums text-white sm:size-14 sm:text-lg">{{ $player->number ?? '—' }}</span>
+                            <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{{ $player->name }}</span>
                         </button>
                     @endforeach
                     <button

@@ -325,6 +325,37 @@ class Game extends Model
     }
 
     /**
+     * Quarters that contribute to the team-foul count for a period.
+     * Each regulation quarter stands alone; overtime carries from the fourth quarter.
+     *
+     * @return list<int>
+     */
+    public function teamFoulQuarters(int $period): array
+    {
+        if ($period <= 4) {
+            return [$period];
+        }
+
+        return range(4, $period);
+    }
+
+    /**
+     * @return array{home: int, away: int}
+     */
+    public function teamFoulsForPeriod(int $period): array
+    {
+        $byQuarter = $this->teamFoulsByQuarter();
+        $totals = ['home' => 0, 'away' => 0];
+
+        foreach ($this->teamFoulQuarters($period) as $quarter) {
+            $totals['home'] += $byQuarter[$quarter]['home'] ?? 0;
+            $totals['away'] += $byQuarter[$quarter]['away'] ?? 0;
+        }
+
+        return $totals;
+    }
+
+    /**
      * Regulation quarters, plus any overtime period present in the given events.
      *
      * @param  Collection<int, GameEvent>  $events

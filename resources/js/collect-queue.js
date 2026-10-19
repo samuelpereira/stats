@@ -355,17 +355,31 @@ function createCollectQueue() {
             return this.timeoutQuarters(this.currentQuarter())[0] === this.timeoutQuarters(this.baseline?.quarter)[0];
         },
 
+        foulQuarters(quarter) {
+            const period = Number(quarter);
+
+            if (period <= 4) {
+                return [period];
+            }
+
+            return Array.from({ length: period - 3 }, (_, index) => index + 4);
+        },
+
+        sameFoulWindow() {
+            return this.foulQuarters(this.currentQuarter()).includes(Number(this.baseline?.quarter));
+        },
+
         queuedFouls(forOpponent) {
-            const quarter = this.currentQuarter();
+            const quarters = new Set(this.foulQuarters(this.currentQuarter()));
 
             return this.items.filter((item) => item.operation === 'record'
                 && item.payload.type === 'foul'
                 && Boolean(item.payload.forOpponent) === forOpponent
-                && Number(item.payload.quarter) === quarter).length;
+                && quarters.has(Number(item.payload.quarter))).length;
         },
 
         teamFoulCount() {
-            const recorded = Number(this.baseline?.quarter) === this.currentQuarter()
+            const recorded = this.sameFoulWindow()
                 ? Number(this.baseline?.teamFouls ?? 0)
                 : 0;
 
@@ -373,7 +387,7 @@ function createCollectQueue() {
         },
 
         opponentFoulCount() {
-            const recorded = Number(this.baseline?.quarter) === this.currentQuarter()
+            const recorded = this.sameFoulWindow()
                 ? Number(this.baseline?.opponentFouls ?? 0)
                 : 0;
 
@@ -544,14 +558,12 @@ function createCollectQueue() {
         },
 
         foulCount(playerId) {
-            const quarter = Number(this.local?.quarter ?? this.baseline?.quarter);
             const player = (this.baseline?.roster ?? []).find((rosterPlayer) => rosterPlayer.id === Number(playerId));
-            const recorded = Number(this.baseline?.quarter) === quarter ? Number(player?.fouls ?? 0) : 0;
+            const recorded = Number(player?.fouls ?? 0);
             const pending = this.items.filter((item) => item.operation === 'record'
                 && item.payload.type === 'foul'
                 && ! item.payload.forOpponent
-                && Number(item.payload.playerId) === Number(playerId)
-                && Number(item.payload.quarter) === quarter).length;
+                && Number(item.payload.playerId) === Number(playerId)).length;
 
             return recorded + pending;
         },
