@@ -7,8 +7,10 @@ use App\Enums\StatType;
 use App\Models\Game;
 use App\Models\Player;
 use App\Support\ShotCourt;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class ImportGameLog
 {
@@ -66,18 +68,8 @@ class ImportGameLog
         $delimiter = ',';
         $map = [];
         $headerRead = false;
-        $events = [];
-        $period = null;
-        /** @var list<int>|null $lineup */
-        $lineup = null;
-        /** @var list<int>|null $starters */
-        $starters = null;
-        /** @var array<int, int> $idsByNumber */
-        $idsByNumber = [];
-
-        foreach (Player::query()->where('team_id', $game->team_id)->whereNotNull('number')->get(['id', 'number']) as $player) {
-            $idsByNumber[(int) $player->number] = $player->id;
-        }
+        /** @var list<array{lineNumber: int, quarter: int, opponent: bool, stat: string, player: string, lineup: string, createdAt: CarbonImmutable, courtX: string, courtY: string}> $logRows */
+        $logRows = [];
 
         foreach ($lines as $index => $line) {
             if (trim($line) === '') {
@@ -101,24 +93,61 @@ class ImportGameLog
             }
 
             $this->assertTeams($game, $cells, $map, $lineNumber);
-            $quarter = $this->quarter($this->cell($cells, $map, 'time_period'), $lineNumber);
-            $opponent = $this->opponentFlag($this->cell($cells, $map, 'is_opp'), $lineNumber);
             $stat = $this->cell($cells, $map, 'stat');
+            $lineup = $this->cell($cells, $map, 'lineup');
 
-            if (strcasecmp($stat, 'FloorTime') === 0) {
-                if ($opponent) {
-                    $this->openPeriod($game, $events, $period, $quarter);
+            if (strcasecmp($stat, 'FloorTime') === 0 && $lineup === '') {
+                continue;
+            }
+
+            $logRows[] = [
+                'lineNumber' => $lineNumber,
+                'quarter' => $this->quarter($this->cell($cells, $map, 'time_period'), $lineNumber),
+                'opponent' => $this->opponentFlag($this->cell($cells, $map, 'is_opp'), $lineNumber),
+                'stat' => $stat,
+                'player' => $this->cell($cells, $map, 'player'),
+                'lineup' => $lineup,
+                'createdAt' => $this->createdAt($this->cell($cells, $map, 'created_at'), $lineNumber),
+                'courtX' => isset($map['court_pos_x']) ? $this->cell($cells, $map, 'court_pos_x') : '',
+                'courtY' => isset($map['court_pos_y']) ? $this->cell($cells, $map, 'court_pos_y') : '',
+            ];
+        }
+
+        if (! $headerRead || $logRows === []) {
+            $this->reject(__('The CSV has no log rows.'));
+        }
+
+        $bounds = $this->periodBounds($logRows);
+        $events = [];
+        $period = null;
+        /** @var list<int>|null $lineup */
+        $lineup = null;
+        /** @var list<int>|null $starters */
+        $starters = null;
+        /** @var array<int, int> $idsByNumber */
+        $idsByNumber = [];
+
+        foreach (Player::query()->where('team_id', $game->team_id)->whereNotNull('number')->get(['id', 'number']) as $player) {
+            $idsByNumber[(int) $player->number] = $player->id;
+        }
+
+        foreach ($logRows as $row) {
+            $clock = $this->clockAt($game, $row['quarter'], $row['createdAt'], $bounds);
+
+            if (strcasecmp($row['stat'], 'FloorTime') === 0) {
+                if ($row['opponent']) {
+                    $this->openPeriod($game, $events, $period, $row['quarter']);
 
                     continue;
                 }
 
-                $numbers = $this->lineupNumbers($this->cell($cells, $map, 'lineup'), $lineNumber);
+                $numbers = $this->lineupNumbers($row['lineup'], $row['lineNumber']);
 
                 foreach ($numbers as $number) {
-                    $this->playerId($idsByNumber, $number, $lineNumber);
+                    $this->playerId($idsByNumber, $number, $row['lineNumber']);
                 }
 
-                $this->openPeriod($game, $events, $period, $quarter);
+                $this->openPeriod($game, $events, $period, $row['quarter']);
 
                 if ($starters === null) {
                     $starters = $numbers;
@@ -127,40 +156,110 @@ class ImportGameLog
                     continue;
                 }
 
-                $lineup = $this->substitute($idsByNumber, $events, $lineup ?? [], $numbers, $quarter, $lineNumber);
+                $lineup = $this->substitute(
+                    $idsByNumber,
+                    $events,
+                    $lineup ?? [],
+                    $numbers,
+                    $row['quarter'],
+                    $clock,
+                    $row['lineNumber'],
+                );
 
                 continue;
             }
 
-            $this->openPeriod($game, $events, $period, $quarter);
-            $type = $this->type($stat, $lineNumber);
-            $side = $opponent ? $game->home_away->opposite() : $game->home_away;
+            $this->openPeriod($game, $events, $period, $row['quarter']);
+            $type = $this->type($row['stat'], $row['lineNumber']);
+            $side = $row['opponent'] ? $game->home_away->opposite() : $game->home_away;
             $playerId = null;
 
-            if (! $opponent) {
-                $playerId = $this->playerId($idsByNumber, $this->jersey($this->cell($cells, $map, 'player'), $lineNumber), $lineNumber);
+            if (! $row['opponent']) {
+                $playerId = $this->playerId($idsByNumber, $this->jersey($row['player'], $row['lineNumber']), $row['lineNumber']);
             }
 
-            $court = $this->court($cells, $map, $lineNumber);
-            $events[] = $this->event($type, $quarter, '00:00', $side, $playerId, null, $court['x'], $court['y']);
-        }
-
-        if (! $headerRead || $events === []) {
-            $this->reject(__('The CSV has no log rows.'));
+            $court = $this->courtCoordinates($row['courtX'], $row['courtY'], $row['lineNumber']);
+            $events[] = $this->event($type, $row['quarter'], $clock, $side, $playerId, null, $court['x'], $court['y']);
         }
 
         if ($starters === null) {
             $this->reject(__('The CSV does not include the starting five.'));
         }
 
-        if ($period !== null) {
-            $events[] = $this->event(StatType::QuarterEnded, $period, '00:00', null, null, null);
-        }
+        $events[] = $this->event(StatType::QuarterEnded, $period, '00:00', null, null, null);
 
         return [
             'squad' => $this->squad($idsByNumber, $starters, $events),
             'events' => $events,
         ];
+    }
+
+    /**
+     * @param  list<array{lineNumber: int, quarter: int, opponent: bool, stat: string, player: string, lineup: string, createdAt: CarbonImmutable, courtX: string, courtY: string}>  $logRows
+     * @return array<int, array{start: int, end: int}>
+     */
+    private function periodBounds(array $logRows): array
+    {
+        $bounds = [];
+
+        foreach ($logRows as $row) {
+            $at = $row['createdAt']->getTimestamp();
+            $quarter = $row['quarter'];
+
+            if (! isset($bounds[$quarter])) {
+                $bounds[$quarter] = ['start' => $at, 'end' => $at];
+
+                continue;
+            }
+
+            $bounds[$quarter]['start'] = min($bounds[$quarter]['start'], $at);
+            $bounds[$quarter]['end'] = max($bounds[$quarter]['end'], $at);
+        }
+
+        return $bounds;
+    }
+
+    /**
+     * @param  array<int, array{start: int, end: int}>  $bounds
+     */
+    private function clockAt(Game $game, int $quarter, CarbonImmutable $at, array $bounds): string
+    {
+        $periodSeconds = $this->periodSeconds($game, $quarter);
+        $start = $bounds[$quarter]['start'] ?? $at->getTimestamp();
+        $end = $bounds[$quarter]['end'] ?? $at->getTimestamp();
+        $span = $end - $start;
+
+        if ($span <= 0) {
+            return $this->formatClock($periodSeconds);
+        }
+
+        $elapsed = max(0, min($span, $at->getTimestamp() - $start));
+        $remaining = (int) round($periodSeconds * (1 - ($elapsed / $span)));
+
+        return $this->formatClock(max(0, min($periodSeconds, $remaining)));
+    }
+
+    private function periodSeconds(Game $game, int $quarter): int
+    {
+        return ($quarter > 4 ? $game->overtime_minutes : $game->quarter_minutes) * 60;
+    }
+
+    private function formatClock(int $seconds): string
+    {
+        return sprintf('%02d:%02d', intdiv($seconds, 60), $seconds % 60);
+    }
+
+    private function createdAt(string $value, int $lineNumber): CarbonImmutable
+    {
+        if ($value === '') {
+            $this->rejectRow($lineNumber, __('The created_at timestamp is missing.'));
+        }
+
+        try {
+            return CarbonImmutable::parse($value);
+        } catch (Throwable) {
+            $this->rejectRow($lineNumber, __('The created_at timestamp is invalid.'));
+        }
     }
 
     /**
@@ -178,8 +277,14 @@ class ImportGameLog
             $events[] = $this->event(StatType::QuarterEnded, $period, '00:00', null, null, null);
         }
 
-        $minutes = $quarter > 4 ? $game->overtime_minutes : $game->quarter_minutes;
-        $events[] = $this->event(StatType::QuarterStarted, $quarter, sprintf('%02d:00', $minutes), null, null, null);
+        $events[] = $this->event(
+            StatType::QuarterStarted,
+            $quarter,
+            $this->formatClock($this->periodSeconds($game, $quarter)),
+            null,
+            null,
+            null,
+        );
         $period = $quarter;
     }
 
@@ -190,8 +295,15 @@ class ImportGameLog
      * @param  list<int>  $next
      * @return list<int>
      */
-    private function substitute(array $idsByNumber, array &$events, array $current, array $next, int $quarter, int $lineNumber): array
-    {
+    private function substitute(
+        array $idsByNumber,
+        array &$events,
+        array $current,
+        array $next,
+        int $quarter,
+        string $clock,
+        int $lineNumber,
+    ): array {
         $outgoing = array_values(array_diff($current, $next));
         $incoming = array_values(array_diff($next, $current));
 
@@ -207,7 +319,7 @@ class ImportGameLog
             $events[] = $this->event(
                 StatType::Substitution,
                 $quarter,
-                '00:00',
+                $clock,
                 null,
                 $this->playerId($idsByNumber, $incoming[$index], $lineNumber),
                 $this->playerId($idsByNumber, $number, $lineNumber),
@@ -250,7 +362,7 @@ class ImportGameLog
      */
     private function headerMap(array $header): array
     {
-        $required = ['player', 'user_team', 'opp_team', 'stat', 'lineup', 'time_period', 'is_opp'];
+        $required = ['player', 'user_team', 'opp_team', 'stat', 'created_at', 'lineup', 'time_period', 'is_opp'];
         $columns = [...$required, 'court_pos_x', 'court_pos_y'];
         $map = [];
 
@@ -265,7 +377,7 @@ class ImportGameLog
         }
 
         if (array_diff($required, array_keys($map)) !== []) {
-            $this->reject(__('The CSV needs the columns player, user_team, opp_team, stat, lineup, time_period, and is_opp.'));
+            $this->reject(__('The CSV needs the columns player, user_team, opp_team, stat, created_at, lineup, time_period, and is_opp.'));
         }
 
         return $map;
@@ -384,15 +496,10 @@ class ImportGameLog
     }
 
     /**
-     * @param  array<string, int>  $map
-     * @param  list<string>  $cells
      * @return array{x: int|null, y: int|null}
      */
-    private function court(array $cells, array $map, int $lineNumber): array
+    private function courtCoordinates(string $x, string $y, int $lineNumber): array
     {
-        $x = isset($map['court_pos_x']) ? $this->cell($cells, $map, 'court_pos_x') : '';
-        $y = isset($map['court_pos_y']) ? $this->cell($cells, $map, 'court_pos_y') : '';
-
         if ($x === '' && $y === '') {
             return ['x' => null, 'y' => null];
         }

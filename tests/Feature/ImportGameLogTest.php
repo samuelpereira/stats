@@ -69,9 +69,19 @@ function playByPlayCsv(array $rows): string
 /**
  * @return list<string>
  */
-function playByPlayRow(string $player, string $stat, string $lineup, string $period, string $opponent, string $team = 'North City U18', string $opposition = 'South Valley', string $courtX = '', string $courtY = ''): array
-{
-    return [$player, $team, $opposition, $stat, '2026-10-02T20:00:00Z', $lineup, '2026-10-02T20:00:00Z', $period, $opponent, '', '', '', '', $courtX, $courtY, '0'];
+function playByPlayRow(
+    string $player,
+    string $stat,
+    string $lineup,
+    string $period,
+    string $opponent,
+    string $team = 'North City U18',
+    string $opposition = 'South Valley',
+    string $courtX = '',
+    string $courtY = '',
+    string $createdAt = '2026-10-02T20:00:00Z',
+): array {
+    return [$player, $team, $opposition, $stat, $createdAt, $lineup, $createdAt, $period, $opponent, '', '', '', '', $courtX, $courtY, '0'];
 }
 
 test('an administrator replaces the statistics log from a play-by-play csv', function () {
@@ -104,7 +114,8 @@ test('an administrator replaces the statistics log from a play-by-play csv', fun
         ->and($game->events()->where('type', StatType::TwoPointMade)->count())->toBe(38)
         ->and($game->events()->where('quarter', 9)->exists())->toBeFalse()
         ->and($game->events()->where('type', StatType::QuarterStarted)->where('clock', '10:00')->exists())->toBeTrue()
-        ->and($game->events()->where('type', StatType::TwoPointMade)->where('clock', '00:00')->exists())->toBeTrue()
+        ->and($game->events()->where('type', StatType::TwoPointMade)->where('clock', '!=', '00:00')->exists())->toBeTrue()
+        ->and($game->events()->where('type', StatType::Substitution)->where('clock', '!=', '00:00')->exists())->toBeTrue()
         ->and($game->events()->where('type', StatType::Substitution)->where('player_id', $incoming?->id)->where('outgoing_player_id', $outgoing?->id)->exists())->toBeTrue();
 
     foreach ([22, 23, 24, 30, 84] as $number) {
@@ -149,6 +160,38 @@ test('a play-by-play csv for another game does not replace the log', function ()
         ->assertSee('The CSV is for North City U18 against Metro United.');
 
     expect($game->events()->count())->toBe(1);
+});
+
+test('a play-by-play import derives player minutes from created_at', function () {
+    ['administrator' => $administrator, 'game' => $game] = gameReadyForPlayByPlayImport();
+    $starters = '#22 A,#23 B,#24 C,#30 D,#84 E';
+    $afterSub = '#21 F,#22 A,#23 B,#24 C,#84 E';
+    $outgoing = Player::query()->where('team_id', $game->team_id)->where('number', 30)->first();
+    $incoming = Player::query()->where('team_id', $game->team_id)->where('number', 21)->first();
+
+    Livewire::actingAs($administrator)
+        ->test(EditGame::class, ['game' => $game])
+        ->set('logFile', UploadedFile::fake()->createWithContent('log.csv', playByPlayCsv([
+            playByPlayRow('#22 A', 'FloorTime', $starters, '1', '0', createdAt: '2026-10-02T20:00:00Z'),
+            playByPlayRow('#22 A', 'TwoPointFG', $starters, '1', '0', createdAt: '2026-10-02T20:02:00Z'),
+            playByPlayRow('#21 F', 'FloorTime', $afterSub, '1', '0', createdAt: '2026-10-02T20:05:00Z'),
+            playByPlayRow('#22 A', 'FloorTime', $afterSub, '1', '0', createdAt: '2026-10-02T20:05:00Z'),
+            playByPlayRow('#23 B', 'FloorTime', $afterSub, '1', '0', createdAt: '2026-10-02T20:05:00Z'),
+            playByPlayRow('#24 C', 'FloorTime', $afterSub, '1', '0', createdAt: '2026-10-02T20:05:00Z'),
+            playByPlayRow('#84 E', 'FloorTime', $afterSub, '1', '0', createdAt: '2026-10-02T20:05:00Z'),
+            playByPlayRow('#22 A', 'Foul', $afterSub, '1', '0', createdAt: '2026-10-02T20:10:00Z'),
+        ])))
+        ->call('importLog')
+        ->assertHasNoErrors();
+
+    $boxScore = $game->fresh()->boxScore();
+    $outgoingLine = collect($boxScore['players'])->firstWhere('id', $outgoing?->id);
+    $incomingLine = collect($boxScore['players'])->firstWhere('id', $incoming?->id);
+    $substitution = $game->events()->where('type', StatType::Substitution)->first();
+
+    expect($substitution?->clock)->toBe('05:00')
+        ->and($outgoingLine['minutes'])->toBe('5:00')
+        ->and($incomingLine['minutes'])->toBe('5:00');
 });
 
 test('a play-by-play import stores the court position', function () {
