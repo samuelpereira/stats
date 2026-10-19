@@ -506,7 +506,7 @@ test('a logged action clock can be edited', function () {
         ->and($event->player_id)->toBe($player->id);
 });
 
-test('a logged substitution can change players and clock', function () {
+test('a logged substitution can change clock but not players', function () {
     $club = Club::factory()->create();
     $member = User::factory()->memberOf($club)->create();
     $team = Team::factory()->create(['club_id' => $club->id]);
@@ -537,14 +537,19 @@ test('a logged substitution can change players and clock', function () {
     statisticsRecord($member, $game)
         ->call('editAction', $event->id)
         ->assertSet('editingAction', true)
+        ->assertSee('In Player')
+        ->assertSee('Out Player')
+        ->assertDontSee('wire:click="selectEditingPlayer', false)
         ->call('selectEditingPlayer', $nextIn->id)
         ->call('selectEditingOutgoingPlayer', $nextOut->id)
+        ->assertSet('editingPlayerId', $incoming->id)
+        ->assertSet('editingOutgoingPlayerId', $outgoing->id)
         ->set('editingEventClock', '04:30')
         ->call('saveLogLine')
         ->assertHasNoErrors();
 
-    expect($event->refresh()->player_id)->toBe($nextIn->id)
-        ->and($event->outgoing_player_id)->toBe($nextOut->id)
+    expect($event->refresh()->player_id)->toBe($incoming->id)
+        ->and($event->outgoing_player_id)->toBe($outgoing->id)
         ->and($event->clock)->toBe('04:30')
         ->and($event->type)->toBe(StatType::Substitution);
 });

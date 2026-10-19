@@ -29,7 +29,7 @@ class UpdateGameEventType
         $clock = $this->clock($clock);
 
         if ($event->type === StatType::Substitution) {
-            $this->updateSubstitution($game, $event, $type, $playerId, $outgoingPlayerId, $clock);
+            $this->updateSubstitution($event, $type, $clock);
 
             return;
         }
@@ -43,33 +43,14 @@ class UpdateGameEventType
         $this->updateStat($game, $event, $type, $playerId, $forOpponent, $clock);
     }
 
-    private function updateSubstitution(
-        Game $game,
-        GameEvent $event,
-        StatType $type,
-        ?int $playerId,
-        ?int $outgoingPlayerId,
-        string $clock,
-    ): void {
-        if ($type !== StatType::Substitution || $playerId === null || $outgoingPlayerId === null) {
+    private function updateSubstitution(GameEvent $event, StatType $type, string $clock): void
+    {
+        if ($type !== StatType::Substitution) {
             throw (new ModelNotFoundException)->setModel(GameEvent::class, [$event->id]);
         }
 
-        $incoming = $this->squadPlayer($game, $playerId);
-        $outgoing = $this->squadPlayer($game, $outgoingPlayerId);
-
-        if ($incoming->id === $outgoing->id) {
-            throw (new ModelNotFoundException)->setModel(Player::class, [$playerId]);
-        }
-
         $event->update([
-            'type' => StatType::Substitution,
-            'player_id' => $incoming->id,
-            'outgoing_player_id' => $outgoing->id,
-            'home_away' => $game->home_away,
             'clock' => $clock,
-            'court_x' => null,
-            'court_y' => null,
         ]);
     }
 

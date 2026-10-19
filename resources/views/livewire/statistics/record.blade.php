@@ -791,57 +791,27 @@
                     </button>
                 </div>
             @elseif ($editingSubstitution)
-                <div class="mt-6 space-y-6">
-                    <div>
-                        <p class="mb-2 text-sm font-medium text-green-700">{{ __('Comes in') }}</p>
-                        <div class="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
-                            @foreach ($this->attachedPlayers as $player)
-                                <button
-                                    type="button"
-                                    wire:key="edit-in-{{ $player->id }}"
-                                    wire:click="selectEditingPlayer({{ $player->id }})"
-                                    @class([
-                                        'flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4',
-                                        'border-zinc-900 bg-amber-100' => $editingPlayerId === $player->id,
-                                        'border-zinc-300 bg-white hover:border-zinc-900' => $editingPlayerId !== $player->id,
-                                    ])
-                                >
-                                    <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">
-                                        @if ($player->number !== null)
-                                            <span class="tabular-nums">#{{ $player->number }}</span>
-                                            <span class="mx-1 text-zinc-400">·</span>
-                                        @endif
-                                        {{ $player->name }}
-                                    </span>
-                                </button>
-                            @endforeach
+                @php($incomingPlayer = $this->attachedPlayers->firstWhere('id', $editingPlayerId))
+                @php($outgoingPlayer = $this->attachedPlayers->firstWhere('id', $editingOutgoingPlayerId))
+                <div class="mt-6 space-y-4 sm:mx-auto sm:max-w-md">
+                    @if ($incomingPlayer)
+                        <div class="flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 sm:rounded-xl sm:py-4">
+                            <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 bg-zinc-900 text-base font-bold tabular-nums text-white sm:size-14 sm:text-lg">{{ $incomingPlayer->number ?? '—' }}</span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block text-xs font-medium text-green-700">{{ __('Comes in') }}</span>
+                                <span class="block truncate text-sm font-semibold sm:text-base">{{ $incomingPlayer->name }}</span>
+                            </span>
                         </div>
-                    </div>
-                    <div>
-                        <p class="mb-2 text-sm font-medium text-red-700">{{ __('Goes out') }}</p>
-                        <div class="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
-                            @foreach ($this->attachedPlayers as $player)
-                                <button
-                                    type="button"
-                                    wire:key="edit-out-{{ $player->id }}"
-                                    wire:click="selectEditingOutgoingPlayer({{ $player->id }})"
-                                    @class([
-                                        'flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4',
-                                        'border-zinc-900 bg-amber-100' => $editingOutgoingPlayerId === $player->id,
-                                        'border-zinc-300 bg-white hover:border-zinc-900' => $editingOutgoingPlayerId !== $player->id,
-                                    ])
-                                >
-                                    <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">
-                                        @if ($player->number !== null)
-                                            <span class="tabular-nums">#{{ $player->number }}</span>
-                                            <span class="mx-1 text-zinc-400">·</span>
-                                        @endif
-                                        {{ $player->name }}
-                                    </span>
-                                </button>
-                            @endforeach
+                    @endif
+                    @if ($outgoingPlayer)
+                        <div class="flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 sm:rounded-xl sm:py-4">
+                            <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 bg-zinc-900 text-base font-bold tabular-nums text-white sm:size-14 sm:text-lg">{{ $outgoingPlayer->number ?? '—' }}</span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block text-xs font-medium text-red-700">{{ __('Goes out') }}</span>
+                                <span class="block truncate text-sm font-semibold sm:text-base">{{ $outgoingPlayer->name }}</span>
+                            </span>
                         </div>
-                    </div>
+                    @endif
                 </div>
             @else
                 @if (count($this->editingTypeChoices) > 1)
