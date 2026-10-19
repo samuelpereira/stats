@@ -48,6 +48,39 @@ HTML),
     expect($player->fresh()->enabled)->toBeFalse();
 });
 
+test('fpb roster import leaves a duplicate shirt number empty', function () {
+    Http::fake([
+        'https://fpb.test/equipa' => Http::response(<<<'HTML'
+<div class="roster__player">
+<a href="/atletas/1001"></a>
+<h2 class="header__heading">João Martim</h2>
+<div class="header_position">Base</div>
+<div class="header_jnumber">5</div>
+</div>
+<div class="roster__player">
+<a href="/atletas/1002"></a>
+<h2 class="header__heading">Riquelme Sissé</h2>
+<div class="header_position">Extremo</div>
+<div class="header_jnumber">5</div>
+</div>
+HTML),
+    ]);
+
+    $team = Team::factory()->create([
+        'fpb_url' => 'https://fpb.test/equipa',
+    ]);
+
+    app(FpbGamesImporter::class)->importPlayers($team, prune: false);
+
+    $first = Player::query()->where('fpb_id', '1001')->first();
+    $second = Player::query()->where('fpb_id', '1002')->first();
+
+    expect($first)->not->toBeNull()
+        ->and($first->number)->toBe(5)
+        ->and($second)->not->toBeNull()
+        ->and($second->number)->toBeNull();
+});
+
 test('fpb games import upserts fixtures for the club on the page', function () {
     Http::fake([
         'https://fpb.test/equipa' => Http::response(<<<'HTML'

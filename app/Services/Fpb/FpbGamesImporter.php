@@ -154,7 +154,7 @@ class FpbGamesImporter
                 $player->fill([
                     'name' => $athlete['name'],
                     'slug' => $this->uniquePlayerSlug($team, $athlete['name']),
-                    'number' => $athlete['number'] !== '' ? (int) $athlete['number'] : null,
+                    'number' => $this->availableShirtNumber($team, $athlete['number']),
                     'position' => $athlete['position'] !== '' ? $athlete['position'] : null,
                     'order' => 0,
                     'enabled' => true,
@@ -167,7 +167,7 @@ class FpbGamesImporter
             }
 
             $player->name = $athlete['name'];
-            $player->number = $athlete['number'] !== '' ? (int) $athlete['number'] : null;
+            $player->number = $this->availableShirtNumber($team, $athlete['number'], $player->id);
 
             if ($athlete['position'] !== '') {
                 $player->position = $athlete['position'];
@@ -436,6 +436,23 @@ class FpbGamesImporter
         }
 
         return $slug;
+    }
+
+    protected function availableShirtNumber(Team $team, string $number, ?int $ignorePlayerId = null): ?int
+    {
+        if ($number === '') {
+            return null;
+        }
+
+        $shirtNumber = (int) $number;
+
+        $taken = Player::query()
+            ->where('team_id', $team->id)
+            ->where('number', $shirtNumber)
+            ->when($ignorePlayerId !== null, fn ($query) => $query->whereKeyNot($ignorePlayerId))
+            ->exists();
+
+        return $taken ? null : $shirtNumber;
     }
 
     protected function storeOpponentPhoto(Game $game, ?string $logoUrl): void
