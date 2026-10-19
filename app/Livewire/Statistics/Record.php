@@ -65,6 +65,10 @@ class Record extends Component
 
     public ?int $editingPlayerId = null;
 
+    public ?int $editingOutgoingPlayerId = null;
+
+    public string $editingEventClock = '';
+
     public bool $editingForOpponent = false;
 
     public bool $choosingTimeout = false;
@@ -620,11 +624,7 @@ class Record extends Component
 
     public function cancelEditingAction(): void
     {
-        $this->editingAction = false;
-        $this->editingEventId = null;
-        $this->editingType = null;
-        $this->editingPlayerId = null;
-        $this->editingForOpponent = false;
+        $this->clearEditingAction();
     }
 
     public function cancelConfirmingQuarterEnd(): void
@@ -782,9 +782,17 @@ class Record extends Component
 
         $this->editingEventId = $event->id;
         $this->editingType = $event->type->value;
-        $this->editingForOpponent = ! $this->game->isOurSide($event->home_away);
-        $this->editingPlayerId = $this->editingForOpponent ? null : $event->player_id;
+        $this->editingEventClock = $event->clock;
+        $this->editingOutgoingPlayerId = $event->outgoing_player_id;
+        $this->editingForOpponent = $event->type === StatType::Timeout
+            ? ! $this->game->isOurSide($event->home_away)
+            : ($event->type->isAssignableStat() && ! $this->game->isOurSide($event->home_away));
+        $this->editingPlayerId = $event->type === StatType::Timeout || $this->editingForOpponent
+            ? null
+            : $event->player_id;
         $this->editingAction = true;
+        $this->resetErrorBag('editingEventClock');
+        unset($this->editingTypeChoices);
     }
 
     public function selectEditingType(string $type): void
@@ -792,8 +800,11 @@ class Record extends Component
         $this->authorize('collect', $this->game);
 
         $stat = StatType::tryFrom($type);
+        $event = $this->editingEventId === null
+            ? null
+            : $this->game->events()->whereKey($this->editingEventId)->first();
 
-        if (! $stat instanceof StatType || ! $stat->isEditableAction()) {
+        if (! $stat instanceof StatType || ! $event instanceof GameEvent || ! $event->type->canSwapTo($stat)) {
             return;
         }
 
@@ -803,6 +814,10 @@ class Record extends Component
     public function selectEditingPlayer(int $playerId): void
     {
         $this->authorize('collect', $this->game);
+
+        if ($this->editingType === StatType::Timeout->value) {
+            return;
+        }
 
         $player = $this->game->players()->whereKey($playerId)->first();
 
@@ -814,12 +829,45 @@ class Record extends Component
         $this->editingForOpponent = false;
     }
 
+    public function selectEditingOutgoingPlayer(int $playerId): void
+    {
+        $this->authorize('collect', $this->game);
+
+        if ($this->editingType !== StatType::Substitution->value) {
+            return;
+        }
+
+        $player = $this->game->players()->whereKey($playerId)->first();
+
+        if (! $player instanceof Player) {
+            throw (new ModelNotFoundException)->setModel(Player::class, [$playerId]);
+        }
+
+        $this->editingOutgoingPlayerId = $player->id;
+    }
+
     public function selectEditingOpponent(): void
     {
         $this->authorize('collect', $this->game);
 
+        if ($this->editingType === StatType::Substitution->value) {
+            return;
+        }
+
         $this->editingPlayerId = null;
         $this->editingForOpponent = true;
+    }
+
+    public function selectEditingTeam(): void
+    {
+        $this->authorize('collect', $this->game);
+
+        if ($this->editingType !== StatType::Timeout->value) {
+            return;
+        }
+
+        $this->editingPlayerId = null;
+        $this->editingForOpponent = false;
     }
 
     public function saveLogLine(UpdateGameEventType $updateGameEventType): void
@@ -830,13 +878,17 @@ class Record extends Component
             return;
         }
 
-        if (! $this->editingForOpponent && $this->editingPlayerId === null) {
-            return;
-        }
-
         $stat = StatType::tryFrom($this->editingType);
 
         if (! $stat instanceof StatType) {
+            return;
+        }
+
+        if ($stat === StatType::Substitution) {
+            if ($this->editingPlayerId === null || $this->editingOutgoingPlayerId === null) {
+                return;
+            }
+        } elseif ($stat->isAssignableStat() && ! $this->editingForOpponent && $this->editingPlayerId === null) {
             return;
         }
 
@@ -845,16 +897,15 @@ class Record extends Component
             $this->editingEventId,
             $stat,
             $this->editingForOpponent ? null : $this->editingPlayerId,
+            $this->editingEventClock,
+            $this->editingOutgoingPlayerId,
+            $this->editingForOpponent,
         );
 
-        $this->editingAction = false;
-        $this->editingEventId = null;
-        $this->editingType = null;
-        $this->editingPlayerId = null;
-        $this->editingForOpponent = false;
+        $this->clearEditingAction();
 
         $this->forgetCollectedEvents();
-        unset($this->lines, $this->fouls);
+        unset($this->lines, $this->fouls, $this->timeouts, $this->lineup);
     }
 
     public function updatedEditingAction(bool $open): void
@@ -863,10 +914,55 @@ class Record extends Component
             return;
         }
 
+        $this->clearEditingActionState();
+    }
+
+    private function clearEditingAction(): void
+    {
+        $this->editingAction = false;
+        $this->clearEditingActionState();
+    }
+
+    private function clearEditingActionState(): void
+    {
         $this->editingEventId = null;
         $this->editingType = null;
         $this->editingPlayerId = null;
+        $this->editingOutgoingPlayerId = null;
+        $this->editingEventClock = '';
         $this->editingForOpponent = false;
+        $this->resetErrorBag('editingEventClock');
+        unset($this->editingTypeChoices);
+    }
+
+    /**
+     * @return list<array{stat: StatType, tone: string}>
+     */
+    #[Computed]
+    public function editingTypeChoices(): array
+    {
+        $event = $this->editingEventId === null
+            ? null
+            : $this->game->events()->whereKey($this->editingEventId)->first();
+
+        if (! $event instanceof GameEvent) {
+            return [];
+        }
+
+        $choices = [];
+
+        foreach ($event->type->editableTypeOptions() as $stat) {
+            $choices[] = [
+                'stat' => $stat,
+                'tone' => match (true) {
+                    $stat->isSolid() => 'made',
+                    $stat->isMiss() => 'missed',
+                    default => 'plain',
+                },
+            ];
+        }
+
+        return $choices;
     }
 
     public function hydrate(): void
@@ -898,11 +994,7 @@ class Record extends Component
         $this->restorePeriod();
 
         if ($operation === 'edit') {
-            $this->editingAction = false;
-            $this->editingEventId = null;
-            $this->editingType = null;
-            $this->editingPlayerId = null;
-            $this->editingForOpponent = false;
+            $this->clearEditingAction();
         }
 
         unset($this->lines, $this->fouls, $this->timeouts, $this->lineup, $this->squad, $this->courtPlayers, $this->benchPlayers, $this->canUndo, $this->periodIsOpen, $this->gameStarted);
@@ -1249,11 +1341,12 @@ class Record extends Component
     {
         $labels = [];
         $editableTypes = [];
+        $typeSwapGroups = [];
 
         foreach (StatType::cases() as $stat) {
             $labels[$stat->value] = __($stat->logLabel());
 
-            if (! $stat->isEditableAction()) {
+            if (! $stat->isAssignableStat()) {
                 continue;
             }
 
@@ -1268,6 +1361,23 @@ class Record extends Component
                 'label' => __($stat->logLabel()),
                 'tone' => $tone,
             ];
+        }
+
+        foreach ([
+            StatType::TwoPointMade,
+            StatType::DefensiveRebound,
+            StatType::Foul,
+        ] as $representative) {
+            $options = $representative->editableTypeOptions();
+
+            if ($options === []) {
+                continue;
+            }
+
+            $typeSwapGroups[] = array_map(
+                fn (StatType $stat): string => $stat->value,
+                $options,
+            );
         }
 
         return [
@@ -1320,6 +1430,8 @@ class Record extends Component
                 ->values()
                 ->all(),
             'labels' => $labels,
+            'editableTypes' => $editableTypes,
+            'typeSwapGroups' => $typeSwapGroups,
             'pickerTitles' => [
                 StatType::DefensiveRebound->value => __(StatType::DefensiveRebound->pickerTitle()),
                 StatType::OffensiveRebound->value => __(StatType::OffensiveRebound->pickerTitle()),
@@ -1329,7 +1441,6 @@ class Record extends Component
                 StatType::Block->value => __(StatType::Block->pickerTitle()),
                 StatType::Foul->value => __(StatType::Foul->pickerTitle()),
             ],
-            'editableTypes' => $editableTypes,
             'templates' => [
                 'startOfQuarter' => __('Start of Q:quarter', ['quarter' => ':quarter']),
                 'startOfOvertime' => __('Start of OT:overtime', ['overtime' => ':overtime']),

@@ -207,6 +207,117 @@ test('the log marks a two as fg, a three as 3pt, and a free throw as ft', functi
         ->assertSee('3pts 1-1 ft');
 });
 
+test('a logged scoring action cannot become a play action or foul', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $game = Game::factory()->create([
+        'team_id' => $team->id,
+        'home_away' => HomeAway::Home,
+    ]);
+    $player = Player::factory()->create(['team_id' => $team->id]);
+    $event = GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => $player->id,
+        'home_away' => $game->home_away,
+        'type' => StatType::TwoPointMade,
+        'clock' => '08:00',
+    ]);
+
+    giveStartingFive($game, $player);
+
+    statisticsRecord($member, $game)
+        ->call('editAction', $event->id)
+        ->call('selectEditingType', StatType::Assist->value)
+        ->call('saveLogLine');
+
+    expect($event->refresh()->type)->toBe(StatType::TwoPointMade);
+
+    statisticsRecord($member, $game)
+        ->set('editingEventId', $event->id)
+        ->set('editingType', StatType::Foul->value)
+        ->set('editingPlayerId', $player->id)
+        ->set('editingEventClock', '08:00')
+        ->call('saveLogLine')
+        ->assertNotFound();
+
+    expect($event->refresh()->type)->toBe(StatType::TwoPointMade);
+});
+
+test('a logged play action can change among play actions only', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $game = Game::factory()->create([
+        'team_id' => $team->id,
+        'home_away' => HomeAway::Home,
+    ]);
+    $player = Player::factory()->create(['team_id' => $team->id]);
+    $event = GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => $player->id,
+        'home_away' => $game->home_away,
+        'type' => StatType::Steal,
+        'clock' => '07:00',
+    ]);
+
+    giveStartingFive($game, $player);
+
+    statisticsRecord($member, $game)
+        ->call('editAction', $event->id)
+        ->call('selectEditingType', StatType::Assist->value)
+        ->call('saveLogLine')
+        ->assertHasNoErrors();
+
+    expect($event->refresh()->type)->toBe(StatType::Assist);
+
+    statisticsRecord($member, $game)
+        ->set('editingEventId', $event->id)
+        ->set('editingType', StatType::TwoPointMade->value)
+        ->set('editingPlayerId', $player->id)
+        ->set('editingEventClock', '07:00')
+        ->call('saveLogLine')
+        ->assertNotFound();
+
+    expect($event->refresh()->type)->toBe(StatType::Assist);
+});
+
+test('a logged foul keeps its type when edited', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $game = Game::factory()->create([
+        'team_id' => $team->id,
+        'home_away' => HomeAway::Home,
+    ]);
+    $player = Player::factory()->create(['team_id' => $team->id]);
+    $replacement = Player::factory()->create(['team_id' => $team->id]);
+    $event = GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => $player->id,
+        'home_away' => $game->home_away,
+        'type' => StatType::Foul,
+        'clock' => '06:00',
+    ]);
+
+    giveStartingFive($game, $player);
+    $game->players()->syncWithoutDetaching([
+        $replacement->id => ['starter' => false],
+    ]);
+
+    statisticsRecord($member, $game)
+        ->call('editAction', $event->id)
+        ->call('selectEditingType', StatType::Steal->value)
+        ->call('selectEditingPlayer', $replacement->id)
+        ->set('editingEventClock', '02:45')
+        ->call('saveLogLine')
+        ->assertHasNoErrors();
+
+    expect($event->refresh()->type)->toBe(StatType::Foul)
+        ->and($event->player_id)->toBe($replacement->id)
+        ->and($event->clock)->toBe('02:45');
+});
+
 test('a logged two can be changed into a three', function () {
     $club = Club::factory()->create();
     $member = User::factory()->memberOf($club)->create();
@@ -321,9 +432,11 @@ test('a logged action cannot be changed into a substitution or another game', fu
         'player_id' => $player->id,
         'home_away' => $game->home_away,
         'type' => StatType::TwoPointMade,
+        'clock' => '05:00',
     ]);
     $other = GameEvent::factory()->create([
         'type' => StatType::TwoPointMade,
+        'clock' => '05:00',
     ]);
 
     giveStartingFive($game, $player);
@@ -332,6 +445,8 @@ test('a logged action cannot be changed into a substitution or another game', fu
         ->set('editingEventId', $shot->id)
         ->set('editingType', StatType::Substitution->value)
         ->set('editingPlayerId', $player->id)
+        ->set('editingOutgoingPlayerId', $player->id)
+        ->set('editingEventClock', '05:00')
         ->call('saveLogLine')
         ->assertNotFound();
 
@@ -341,6 +456,7 @@ test('a logged action cannot be changed into a substitution or another game', fu
         ->set('editingEventId', $other->id)
         ->set('editingType', StatType::ThreePointMade->value)
         ->set('editingPlayerId', $player->id)
+        ->set('editingEventClock', '05:00')
         ->call('saveLogLine')
         ->assertNotFound();
 
@@ -352,10 +468,118 @@ test('a logged action cannot be changed into a substitution or another game', fu
         ->set('editingEventId', $shot->id)
         ->set('editingType', StatType::TwoPointMade->value)
         ->set('editingPlayerId', $outsider->id)
+        ->set('editingEventClock', '05:00')
         ->call('saveLogLine')
         ->assertNotFound();
 
     expect($shot->refresh()->player_id)->toBe($player->id);
+});
+
+test('a logged action clock can be edited', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $game = Game::factory()->create([
+        'team_id' => $team->id,
+        'home_away' => HomeAway::Home,
+    ]);
+    $player = Player::factory()->create(['team_id' => $team->id]);
+    $event = GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => $player->id,
+        'home_away' => $game->home_away,
+        'type' => StatType::TwoPointMade,
+        'clock' => '08:00',
+    ]);
+
+    giveStartingFive($game, $player);
+
+    statisticsRecord($member, $game)
+        ->call('editAction', $event->id)
+        ->set('editingEventClock', '03:15')
+        ->call('saveLogLine')
+        ->assertHasNoErrors();
+
+    expect($event->refresh()->clock)->toBe('03:15')
+        ->and($event->type)->toBe(StatType::TwoPointMade)
+        ->and($event->player_id)->toBe($player->id);
+});
+
+test('a logged substitution can change players and clock', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $game = Game::factory()->create([
+        'team_id' => $team->id,
+        'home_away' => HomeAway::Home,
+    ]);
+    $incoming = Player::factory()->create(['team_id' => $team->id, 'name' => 'In Player', 'number' => 1]);
+    $outgoing = Player::factory()->create(['team_id' => $team->id, 'name' => 'Out Player', 'number' => 2]);
+    $nextIn = Player::factory()->create(['team_id' => $team->id, 'name' => 'Next In', 'number' => 3]);
+    $nextOut = Player::factory()->create(['team_id' => $team->id, 'name' => 'Next Out', 'number' => 4]);
+    $event = GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => $incoming->id,
+        'outgoing_player_id' => $outgoing->id,
+        'home_away' => $game->home_away,
+        'type' => StatType::Substitution,
+        'clock' => '07:00',
+    ]);
+
+    giveStartingFive($game, $outgoing);
+    $game->players()->syncWithoutDetaching([
+        $incoming->id => ['starter' => false],
+        $nextIn->id => ['starter' => false],
+        $nextOut->id => ['starter' => false],
+    ]);
+
+    statisticsRecord($member, $game)
+        ->call('editAction', $event->id)
+        ->assertSet('editingAction', true)
+        ->call('selectEditingPlayer', $nextIn->id)
+        ->call('selectEditingOutgoingPlayer', $nextOut->id)
+        ->set('editingEventClock', '04:30')
+        ->call('saveLogLine')
+        ->assertHasNoErrors();
+
+    expect($event->refresh()->player_id)->toBe($nextIn->id)
+        ->and($event->outgoing_player_id)->toBe($nextOut->id)
+        ->and($event->clock)->toBe('04:30')
+        ->and($event->type)->toBe(StatType::Substitution);
+});
+
+test('a logged timeout can change side and clock', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $game = Game::factory()->create([
+        'team_id' => $team->id,
+        'opponent' => 'South Valley U18',
+        'home_away' => HomeAway::Home,
+    ]);
+    $event = GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => null,
+        'home_away' => HomeAway::Home,
+        'type' => StatType::Timeout,
+        'clock' => '06:00',
+    ]);
+
+    giveStartingFive($game);
+
+    statisticsRecord($member, $game)
+        ->call('editAction', $event->id)
+        ->assertSet('editingAction', true)
+        ->assertSet('editingForOpponent', false)
+        ->call('selectEditingOpponent')
+        ->set('editingEventClock', '01:20')
+        ->call('saveLogLine')
+        ->assertHasNoErrors();
+
+    expect($event->refresh()->home_away)->toBe(HomeAway::Away)
+        ->and($event->clock)->toBe('01:20')
+        ->and($event->type)->toBe(StatType::Timeout)
+        ->and($event->player_id)->toBeNull();
 });
 
 test('a club member records an opponent basket from the player screen', function () {

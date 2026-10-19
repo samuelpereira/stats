@@ -145,6 +145,11 @@ test('season box score accumulates player stats across logged games', function (
         'name' => 'Alex North',
         'number' => 8,
     ]);
+    $bench = Player::factory()->create([
+        'team_id' => $team->id,
+        'name' => 'Bench Never Played',
+        'number' => 99,
+    ]);
 
     foreach ([1, 2] as $index) {
         $game = Game::factory()->create([
@@ -199,14 +204,17 @@ test('season box score accumulates player stats across logged games', function (
         ->and($line['twoAttempts'])->toBe(2)
         ->and($line['gp'])->toBe(2)
         ->and($boxScore['team']['points'])->toBe(4)
+        ->and($boxScore['team']['gp'])->toBe(2)
         ->and($boxScore['opponent']['points'])->toBe(6)
         ->and($boxScore['opponent']['threeMade'])->toBe(2)
-        ->and($boxScore['opponent']['threeAttempts'])->toBe(2);
+        ->and($boxScore['opponent']['threeAttempts'])->toBe(2)
+        ->and(collect($boxScore['players'])->firstWhere('id', $bench->id))->toBeNull();
 
     Livewire::actingAs($administrator)
         ->test(SeasonStatistics::class, ['team' => $team])
         ->assertSee(__('Season Box Score'))
         ->assertSee('Alex North')
+        ->assertDontSee('Bench Never Played')
         ->assertSee(__('Opponents'))
         ->assertSee('GP');
 });

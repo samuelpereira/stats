@@ -120,6 +120,7 @@ function createCollectQueue() {
         editingType: null,
         editingPlayerId: null,
         editingForOpponent: false,
+        editingEventClock: null,
 
         bind(wire) {
             this.wire = wire;
@@ -845,9 +846,23 @@ function createCollectQueue() {
                 eventId,
                 type,
                 playerId: this.wire.editingForOpponent ? null : this.wire.editingPlayerId,
+                outgoingPlayerId: this.wire.editingOutgoingPlayerId,
                 forOpponent: Boolean(this.wire.editingForOpponent),
+                clock: this.wire.editingEventClock,
             });
             this.wire.cancelEditingAction();
+        },
+
+        editableTypesForEdit() {
+            const current = this.editingType;
+            const groups = this.baseline?.typeSwapGroups ?? [];
+            const group = groups.find((options) => options.includes(current));
+
+            if (! group || group.length <= 1) {
+                return [];
+            }
+
+            return (this.baseline?.editableTypes ?? []).filter((stat) => group.includes(stat.value));
         },
 
         editPending(id) {
@@ -861,6 +876,7 @@ function createCollectQueue() {
             this.editingType = item.payload.type;
             this.editingPlayerId = item.payload.playerId;
             this.editingForOpponent = Boolean(item.payload.forOpponent);
+            this.editingEventClock = item.payload.clock;
         },
 
         async savePendingEdit() {
@@ -871,6 +887,14 @@ function createCollectQueue() {
             }
 
             const type = this.editingType;
+            const originalType = item.payload.type;
+            const groups = this.baseline?.typeSwapGroups ?? [];
+            const group = groups.find((options) => options.includes(originalType));
+
+            if (type !== originalType && (! group || ! group.includes(type))) {
+                return;
+            }
+
             const needsShot = this.needsShot(type);
             const hasShot = item.payload.courtX !== null && item.payload.courtY !== null;
 
@@ -883,6 +907,7 @@ function createCollectQueue() {
                 type,
                 playerId: this.editingForOpponent ? null : this.editingPlayerId,
                 forOpponent: this.editingForOpponent,
+                clock: this.editingEventClock ?? item.payload.clock,
             };
             await putItem(this.database, item);
             this.editingPendingId = null;

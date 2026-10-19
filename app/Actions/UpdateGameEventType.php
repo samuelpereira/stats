@@ -7,41 +7,157 @@ use App\Models\Game;
 use App\Models\GameEvent;
 use App\Models\Player;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Validation\ValidationException;
 
 class UpdateGameEventType
 {
-    public function handle(Game $game, int $eventId, StatType $type, ?int $playerId): void
-    {
-        if (! $type->isEditableAction()) {
-            throw (new ModelNotFoundException)->setModel(GameEvent::class, [$eventId]);
-        }
-
+    public function handle(
+        Game $game,
+        int $eventId,
+        StatType $type,
+        ?int $playerId,
+        string $clock,
+        ?int $outgoingPlayerId = null,
+        bool $forOpponent = false,
+    ): void {
         $event = $game->events()->whereKey($eventId)->first();
 
         if (! $event instanceof GameEvent || ! $event->type->isEditableAction()) {
             throw (new ModelNotFoundException)->setModel(GameEvent::class, [$eventId]);
         }
 
-        if ($playerId === null) {
+        $clock = $this->clock($clock);
+
+        if ($event->type === StatType::Substitution) {
+            $this->updateSubstitution($game, $event, $type, $playerId, $outgoingPlayerId, $clock);
+
+            return;
+        }
+
+        if ($event->type === StatType::Timeout) {
+            $this->updateTimeout($game, $event, $type, $playerId, $forOpponent, $clock);
+
+            return;
+        }
+
+        $this->updateStat($game, $event, $type, $playerId, $forOpponent, $clock);
+    }
+
+    private function updateSubstitution(
+        Game $game,
+        GameEvent $event,
+        StatType $type,
+        ?int $playerId,
+        ?int $outgoingPlayerId,
+        string $clock,
+    ): void {
+        if ($type !== StatType::Substitution || $playerId === null || $outgoingPlayerId === null) {
+            throw (new ModelNotFoundException)->setModel(GameEvent::class, [$event->id]);
+        }
+
+        $incoming = $this->squadPlayer($game, $playerId);
+        $outgoing = $this->squadPlayer($game, $outgoingPlayerId);
+
+        if ($incoming->id === $outgoing->id) {
+            throw (new ModelNotFoundException)->setModel(Player::class, [$playerId]);
+        }
+
+        $event->update([
+            'type' => StatType::Substitution,
+            'player_id' => $incoming->id,
+            'outgoing_player_id' => $outgoing->id,
+            'home_away' => $game->home_away,
+            'clock' => $clock,
+            'court_x' => null,
+            'court_y' => null,
+        ]);
+    }
+
+    private function updateTimeout(
+        Game $game,
+        GameEvent $event,
+        StatType $type,
+        ?int $playerId,
+        bool $forOpponent,
+        string $clock,
+    ): void {
+        if ($type !== StatType::Timeout || $playerId !== null) {
+            throw (new ModelNotFoundException)->setModel(GameEvent::class, [$event->id]);
+        }
+
+        $event->update([
+            'type' => StatType::Timeout,
+            'player_id' => null,
+            'outgoing_player_id' => null,
+            'home_away' => $game->sideFor($forOpponent),
+            'clock' => $clock,
+            'court_x' => null,
+            'court_y' => null,
+        ]);
+    }
+
+    private function updateStat(
+        Game $game,
+        GameEvent $event,
+        StatType $type,
+        ?int $playerId,
+        bool $forOpponent,
+        string $clock,
+    ): void {
+        if (! $event->type->isAssignableStat() || ! $event->type->canSwapTo($type)) {
+            throw (new ModelNotFoundException)->setModel(GameEvent::class, [$event->id]);
+        }
+
+        if ($forOpponent || $playerId === null) {
             $event->update([
                 'type' => $type,
                 'player_id' => null,
+                'outgoing_player_id' => null,
                 'home_away' => $game->sideFor(true),
+                'clock' => $clock,
             ]);
 
             return;
         }
 
+        $player = $this->squadPlayer($game, $playerId);
+
+        $event->update([
+            'type' => $type,
+            'player_id' => $player->id,
+            'outgoing_player_id' => null,
+            'home_away' => $game->home_away,
+            'clock' => $clock,
+        ]);
+    }
+
+    private function squadPlayer(Game $game, int $playerId): Player
+    {
         $player = $game->players()->whereKey($playerId)->first();
 
         if (! $player instanceof Player) {
             throw (new ModelNotFoundException)->setModel(Player::class, [$playerId]);
         }
 
-        $event->update([
-            'type' => $type,
-            'player_id' => $player->id,
-            'home_away' => $game->home_away,
-        ]);
+        return $player;
+    }
+
+    private function clock(string $clock): string
+    {
+        if (preg_match('/^\d{1,2}:\d{2}$/', $clock) !== 1) {
+            throw ValidationException::withMessages([
+                'editingEventClock' => __('The clock must use minutes and seconds, such as 05:00.'),
+            ]);
+        }
+
+        [$minutes, $seconds] = explode(':', $clock);
+
+        if ((int) $minutes > 99 || (int) $seconds > 59) {
+            throw ValidationException::withMessages([
+                'editingEventClock' => __('The clock must use minutes and seconds, such as 05:00.'),
+            ]);
+        }
+
+        return sprintf('%02d:%02d', (int) $minutes, (int) $seconds);
     }
 }

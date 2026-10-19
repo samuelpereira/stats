@@ -633,7 +633,18 @@
         </div>
     </header>
     <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-6">
-        <div class="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
+        <div class="mx-auto max-w-xs">
+            <label class="block">
+                <span class="mb-1 block text-sm font-medium text-zinc-700">{{ __('Clock') }}</span>
+                <input type="text" inputmode="numeric" maxlength="5" x-model="$store.collectQueue.editingEventClock" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-center text-lg font-semibold tabular-nums text-zinc-900" aria-label="{{ __('Clock') }}" />
+            </label>
+        </div>
+        <div class="mx-auto mt-6 grid max-w-md grid-cols-2 gap-2" x-show="$store.collectQueue.editableTypesForEdit().length > 1">
+            <template x-for="stat in $store.collectQueue.editableTypesForEdit()" :key="stat.value">
+                <button type="button" x-on:click="$store.collectQueue.editingType = stat.value" class="w-full rounded-lg border bg-white px-3 py-2 text-sm font-medium" :class="{ 'border-green-700 text-green-700': stat.tone === 'made', 'border-red-700 text-red-700': stat.tone === 'missed', 'border-zinc-300 text-zinc-900': stat.tone === 'plain', 'ring-2 ring-zinc-900 ring-inset': $store.collectQueue.editingType === stat.value }" x-text="stat.label"></button>
+            </template>
+        </div>
+        <div class="mt-6 flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
             <template x-for="player in $store.collectQueue.baseline?.roster ?? []" :key="'edit-' + player.id">
                 <button type="button" x-on:click="$store.collectQueue.editingPlayerId = player.id; $store.collectQueue.editingForOpponent = false" class="flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4" :class="! $store.collectQueue.editingForOpponent && $store.collectQueue.editingPlayerId === player.id ? 'border-zinc-900 bg-amber-100' : 'border-zinc-300 bg-white'">
                     <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base" x-text="player.label"></span>
@@ -642,11 +653,6 @@
             <button type="button" x-on:click="$store.collectQueue.editingPlayerId = null; $store.collectQueue.editingForOpponent = true" class="flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4" :class="$store.collectQueue.editingForOpponent ? 'border-zinc-900 bg-amber-100' : 'border-zinc-300 bg-white'">
                 <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{{ $opponentName }}</span>
             </button>
-        </div>
-        <div class="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-            <template x-for="stat in $store.collectQueue.baseline?.editableTypes ?? []" :key="stat.value">
-                <button type="button" x-on:click="$store.collectQueue.editingType = stat.value" class="w-full rounded-lg border bg-white px-3 py-2 text-sm font-medium" :class="{ 'border-green-700 text-green-700': stat.tone === 'made', 'border-red-700 text-red-700': stat.tone === 'missed', 'border-zinc-300 text-zinc-900': stat.tone === 'plain', 'ring-2 ring-zinc-900 ring-inset': $store.collectQueue.editingType === stat.value }" x-text="stat.label"></button>
-            </template>
         </div>
     </div>
     <div class="flex shrink-0 justify-end border-t border-zinc-200 px-3 py-3 sm:px-6">
@@ -761,77 +767,167 @@
 
 @if ($this->lineupReady)
 <flux:modal wire:model="editingAction" :closable="false" class="statistics-collect-modal !bg-white">
+    @php($editingSubstitution = $editingType === \App\Enums\StatType::Substitution->value)
+    @php($editingTimeout = $editingType === \App\Enums\StatType::Timeout->value)
     <div class="flex h-dvh min-h-0 flex-col text-zinc-900">
         @include('livewire.statistics.partials.collect-modal-header', ['title' => __('Edit'), 'cancelAction' => 'cancelEditingAction'])
         <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-6">
-            <div class="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
-                @foreach ($this->attachedPlayers as $player)
+            <div class="mx-auto max-w-xs">
+                <label class="block">
+                    <span class="mb-1 block text-sm font-medium text-zinc-700">{{ __('Clock') }}</span>
+                    <input
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="5"
+                        wire:model="editingEventClock"
+                        class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-center text-lg font-semibold tabular-nums text-zinc-900"
+                        aria-label="{{ __('Clock') }}"
+                    />
+                </label>
+                @error('editingEventClock')
+                    <p class="mt-1 text-center text-xs text-red-700">{{ $message }}</p>
+                @enderror
+            </div>
+
+            @if ($editingTimeout)
+                <div class="mt-6 flex flex-col gap-2 sm:mx-auto sm:max-w-md">
                     <button
                         type="button"
-                        wire:key="edit-player-{{ $player->id }}"
-                        wire:click="selectEditingPlayer({{ $player->id }})"
+                        wire:click="selectEditingTeam"
                         @class([
                             'flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4',
-                            'border-zinc-900 bg-amber-100' => ! $editingForOpponent && $editingPlayerId === $player->id,
-                            'border-zinc-300 bg-white hover:border-zinc-900' => $editingForOpponent || $editingPlayerId !== $player->id,
+                            'border-zinc-900 bg-amber-100' => ! $editingForOpponent,
+                            'border-zinc-300 bg-white hover:border-zinc-900' => $editingForOpponent,
                         ])
                     >
-                        <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 sm:size-14">
-                            <flux:icon name="user" class="size-5 sm:size-7" />
-                        </span>
-                        <span class="min-w-0 flex-1">
-                            <span class="block truncate text-sm font-semibold leading-snug sm:text-base">
-                                @if ($player->number !== null)
-                                    <span class="tabular-nums">#{{ $player->number }}</span>
-                                    <span class="mx-1 text-zinc-400">·</span>
-                                @endif
-                                {{ $player->name }}
-                            </span>
-                        </span>
+                        <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{{ $teamName }}</span>
                     </button>
-                @endforeach
-                <button
-                    type="button"
-                    wire:click="selectEditingOpponent"
-                    @class([
-                        'flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4',
-                        'border-zinc-900 bg-amber-100' => $editingForOpponent,
-                        'border-zinc-300 bg-white hover:border-zinc-900' => ! $editingForOpponent,
-                    ])
-                >
-                    @include('livewire.statistics.partials.opponent-mark')
-                    <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{{ $opponentName }}</span>
-                </button>
-            </div>
-            <div class="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                @foreach ([
-                    [\App\Enums\StatType::TwoPointMade, 'made'],
-                    [\App\Enums\StatType::TwoPointMissed, 'missed'],
-                    [\App\Enums\StatType::ThreePointMade, 'made'],
-                    [\App\Enums\StatType::ThreePointMissed, 'missed'],
-                    [\App\Enums\StatType::FreeThrowMade, 'made'],
-                    [\App\Enums\StatType::FreeThrowMissed, 'missed'],
-                    [\App\Enums\StatType::DefensiveRebound, 'plain'],
-                    [\App\Enums\StatType::OffensiveRebound, 'plain'],
-                    [\App\Enums\StatType::Turnover, 'plain'],
-                    [\App\Enums\StatType::Steal, 'plain'],
-                    [\App\Enums\StatType::Assist, 'plain'],
-                    [\App\Enums\StatType::Block, 'plain'],
-                    [\App\Enums\StatType::Foul, 'plain'],
-                ] as [$stat, $tone])
                     <button
                         type="button"
-                        wire:click="selectEditingType('{{ $stat->value }}')"
+                        wire:click="selectEditingOpponent"
                         @class([
-                            'w-full rounded-lg border bg-white px-3 py-2 text-sm font-medium',
-                            'border-green-700 text-green-700' => $tone === 'made',
-                            'border-red-700 text-red-700' => $tone === 'missed',
-                            'border-zinc-300 text-zinc-900' => $tone === 'plain',
-                            'ring-2 ring-zinc-900 ring-inset' => $editingType === $stat->value,
+                            'flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4',
+                            'border-zinc-900 bg-amber-100' => $editingForOpponent,
+                            'border-zinc-300 bg-white hover:border-zinc-900' => ! $editingForOpponent,
                         ])
-                    >{{ __($stat->logLabel()) }}</button>
-                @endforeach
-            </div>
+                    >
+                        @include('livewire.statistics.partials.opponent-mark')
+                        <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{{ $opponentName }}</span>
+                    </button>
+                </div>
+            @elseif ($editingSubstitution)
+                <div class="mt-6 space-y-6">
+                    <div>
+                        <p class="mb-2 text-sm font-medium text-green-700">{{ __('Comes in') }}</p>
+                        <div class="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
+                            @foreach ($this->attachedPlayers as $player)
+                                <button
+                                    type="button"
+                                    wire:key="edit-in-{{ $player->id }}"
+                                    wire:click="selectEditingPlayer({{ $player->id }})"
+                                    @class([
+                                        'flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4',
+                                        'border-zinc-900 bg-amber-100' => $editingPlayerId === $player->id,
+                                        'border-zinc-300 bg-white hover:border-zinc-900' => $editingPlayerId !== $player->id,
+                                    ])
+                                >
+                                    <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">
+                                        @if ($player->number !== null)
+                                            <span class="tabular-nums">#{{ $player->number }}</span>
+                                            <span class="mx-1 text-zinc-400">·</span>
+                                        @endif
+                                        {{ $player->name }}
+                                    </span>
+                                </button>
+                            @endforeach
+                        </div>
+                    </div>
+                    <div>
+                        <p class="mb-2 text-sm font-medium text-red-700">{{ __('Goes out') }}</p>
+                        <div class="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
+                            @foreach ($this->attachedPlayers as $player)
+                                <button
+                                    type="button"
+                                    wire:key="edit-out-{{ $player->id }}"
+                                    wire:click="selectEditingOutgoingPlayer({{ $player->id }})"
+                                    @class([
+                                        'flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4',
+                                        'border-zinc-900 bg-amber-100' => $editingOutgoingPlayerId === $player->id,
+                                        'border-zinc-300 bg-white hover:border-zinc-900' => $editingOutgoingPlayerId !== $player->id,
+                                    ])
+                                >
+                                    <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">
+                                        @if ($player->number !== null)
+                                            <span class="tabular-nums">#{{ $player->number }}</span>
+                                            <span class="mx-1 text-zinc-400">·</span>
+                                        @endif
+                                        {{ $player->name }}
+                                    </span>
+                                </button>
+                            @endforeach
+                        </div>
+                    </div>
+                </div>
+            @else
+                @if (count($this->editingTypeChoices) > 1)
+                    <div class="mx-auto mt-6 grid max-w-md grid-cols-2 gap-2">
+                        @foreach ($this->editingTypeChoices as $choice)
+                            @php($stat = $choice['stat'])
+                            <button
+                                type="button"
+                                wire:key="edit-type-{{ $stat->value }}"
+                                wire:click="selectEditingType('{{ $stat->value }}')"
+                                @class([
+                                    'w-full rounded-lg border bg-white px-3 py-2 text-sm font-medium',
+                                    'border-green-700 text-green-700' => $choice['tone'] === 'made',
+                                    'border-red-700 text-red-700' => $choice['tone'] === 'missed',
+                                    'border-zinc-300 text-zinc-900' => $choice['tone'] === 'plain',
+                                    'ring-2 ring-zinc-900 ring-inset' => $editingType === $stat->value,
+                                ])
+                            >{{ __($stat->logLabel()) }}</button>
+                        @endforeach
+                    </div>
+                @endif
+                <div class="mt-6 flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
+                    @foreach ($this->attachedPlayers as $player)
+                        <button
+                            type="button"
+                            wire:key="edit-player-{{ $player->id }}"
+                            wire:click="selectEditingPlayer({{ $player->id }})"
+                            @class([
+                                'flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4',
+                                'border-zinc-900 bg-amber-100' => ! $editingForOpponent && $editingPlayerId === $player->id,
+                                'border-zinc-300 bg-white hover:border-zinc-900' => $editingForOpponent || $editingPlayerId !== $player->id,
+                            ])
+                        >
+                            <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 sm:size-14">
+                                <flux:icon name="user" class="size-5 sm:size-7" />
+                            </span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block truncate text-sm font-semibold leading-snug sm:text-base">
+                                    @if ($player->number !== null)
+                                        <span class="tabular-nums">#{{ $player->number }}</span>
+                                        <span class="mx-1 text-zinc-400">·</span>
+                                    @endif
+                                    {{ $player->name }}
+                                </span>
+                            </span>
+                        </button>
+                    @endforeach
+                    <button
+                        type="button"
+                        wire:click="selectEditingOpponent"
+                        @class([
+                            'flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4',
+                            'border-zinc-900 bg-amber-100' => $editingForOpponent,
+                            'border-zinc-300 bg-white hover:border-zinc-900' => ! $editingForOpponent,
+                        ])
+                    >
+                        @include('livewire.statistics.partials.opponent-mark')
+                        <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{{ $opponentName }}</span>
+                    </button>
+                </div>
+            @endif
         </div>
         <div class="flex shrink-0 justify-end border-t border-zinc-200 px-3 py-3 sm:px-6">
             <button type="button" x-on:click="$store.collectQueue.saveConfirmedEdit()" class="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white">{{ __('Confirm') }}</button>

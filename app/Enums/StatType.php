@@ -139,8 +139,65 @@ enum StatType: string
     public function isEditableAction(): bool
     {
         return match ($this) {
+            self::QuarterStarted, self::QuarterEnded => false,
+            default => true,
+        };
+    }
+
+    public function isAssignableStat(): bool
+    {
+        return match ($this) {
             self::Substitution, self::Timeout, self::QuarterStarted, self::QuarterEnded => false,
             default => true,
         };
+    }
+
+    /**
+     * Types that may replace this action when editing a log line.
+     *
+     * @return list<self>
+     */
+    public function editableTypeOptions(): array
+    {
+        return match ($this) {
+            self::TwoPointMade,
+            self::TwoPointMissed,
+            self::ThreePointMade,
+            self::ThreePointMissed,
+            self::FreeThrowMade,
+            self::FreeThrowMissed => [
+                self::TwoPointMade,
+                self::TwoPointMissed,
+                self::ThreePointMade,
+                self::ThreePointMissed,
+                self::FreeThrowMade,
+                self::FreeThrowMissed,
+            ],
+            self::DefensiveRebound,
+            self::OffensiveRebound,
+            self::Turnover,
+            self::Steal,
+            self::Assist,
+            self::Block => [
+                self::DefensiveRebound,
+                self::OffensiveRebound,
+                self::Turnover,
+                self::Steal,
+                self::Assist,
+                self::Block,
+            ],
+            self::Foul => [self::Foul],
+            default => [],
+        };
+    }
+
+    public function canSwapTo(self $type): bool
+    {
+        return in_array($type, $this->editableTypeOptions(), true);
+    }
+
+    public function hasEditableTypePicker(): bool
+    {
+        return count($this->editableTypeOptions()) > 1;
     }
 }

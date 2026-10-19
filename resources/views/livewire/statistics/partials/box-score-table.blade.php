@@ -65,7 +65,7 @@
             <tr class="font-semibold">
                 <td class="sticky left-0 z-10 bg-white w-44 whitespace-nowrap py-2 pr-3 pl-4 sm:pl-6">{{ $teamName }}</td>
                 @if ($showGp)
-                    <td class="px-2 py-2 text-center text-zinc-400">—</td>
+                    <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['team']['gp'] ?? '—' }}</td>
                 @endif
                 <td class="min-w-14 whitespace-nowrap px-2 py-2 text-right tabular-nums">{{ $boxScore['team']['points'] }}</td>
                 <td class="min-w-14 whitespace-nowrap px-2 py-2 text-right tabular-nums">{{ $boxScore['team']['twoMade'] }}-{{ $boxScore['team']['twoAttempts'] }}</td>

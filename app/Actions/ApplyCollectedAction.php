@@ -268,9 +268,28 @@ class ApplyCollectedAction
         $type = $this->stat($payload['type'] ?? null);
         $eventId = $this->requiredInt($payload['eventId'] ?? null, 'eventId');
         $forOpponent = $this->boolean($payload['forOpponent'] ?? false);
-        $playerId = $forOpponent ? null : $this->requiredInt($payload['playerId'] ?? null, 'playerId');
+        $clock = $this->clock($payload['clock'] ?? null);
+        $playerId = null;
+        $outgoingPlayerId = null;
 
-        $this->updateGameEventType->handle($game, $eventId, $type, $playerId);
+        if ($type === StatType::Substitution) {
+            $playerId = $this->requiredInt($payload['playerId'] ?? null, 'playerId');
+            $outgoingPlayerId = $this->requiredInt($payload['outgoingPlayerId'] ?? null, 'outgoingPlayerId');
+        } elseif ($type->isAssignableStat()) {
+            $playerId = $forOpponent ? null : $this->requiredInt($payload['playerId'] ?? null, 'playerId');
+        } elseif ($type !== StatType::Timeout) {
+            $this->invalid('type', __('The collected action is not valid.'));
+        }
+
+        $this->updateGameEventType->handle(
+            $game,
+            $eventId,
+            $type,
+            $playerId,
+            $clock,
+            $outgoingPlayerId,
+            $forOpponent,
+        );
     }
 
     private function assertPeriodOpen(Game $game): void

@@ -261,6 +261,10 @@ class Team extends Model
         $rows = [];
 
         foreach ($players as $player) {
+            if ($gamesPlayed[$player->id] === 0) {
+                continue;
+            }
+
             $rows[] = [
                 'id' => $player->id,
                 'number' => $player->number,
@@ -276,7 +280,7 @@ class Team extends Model
             'players' => $rows,
             'team' => [
                 ...$teamTotals,
-                'gp' => null,
+                'gp' => $games->count(),
                 'seconds' => $teamSeconds,
                 'minutes' => Game::formatPlayed($teamSeconds),
                 'plusMinus' => null,
