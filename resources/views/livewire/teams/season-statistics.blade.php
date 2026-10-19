@@ -2,13 +2,13 @@
     @if ($shared)
         <div class="flex h-dvh min-h-0 flex-col bg-zinc-100 text-zinc-900">
             <header class="shrink-0 border-b border-zinc-200 bg-white">
-                <div class="mx-auto flex w-full max-w-5xl items-center justify-center px-4 py-3">
+                <div class="mx-auto flex w-full max-w-6xl items-center justify-center px-4 py-3">
                     <h1 class="truncate text-center text-sm font-medium sm:text-base">{{ __('Season statistics') }}</h1>
                 </div>
             </header>
 
             <div class="min-h-0 flex-1 overflow-y-auto">
-                <div class="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-4 sm:px-6">
+                <div class="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6">
                     <div class="rounded-lg border border-zinc-200 bg-white px-4 py-6 shadow-sm">
                         <p class="text-center text-sm text-zinc-500">{{ $this->team->season->name }}</p>
                         <p class="mt-2 text-center text-lg font-semibold tracking-tight">{{ $this->team->name }}</p>

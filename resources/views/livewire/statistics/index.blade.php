@@ -5,6 +5,26 @@
     </div>
 
     <div class="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xs">
+        <div class="border-b border-zinc-200 px-4 py-4">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-end">
+                <flux:select wire:model.live="seasonId" :label="__('Season')" class="sm:max-w-xs">
+                    <flux:select.option value="">{{ __('All seasons') }}</flux:select.option>
+                    @foreach ($this->seasons as $season)
+                        <flux:select.option :value="$season->id">{{ $season->name }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+
+                <flux:select wire:model.live="teamId" :label="__('Team')" class="sm:max-w-md">
+                    <flux:select.option value="">{{ __('All teams') }}</flux:select.option>
+                    @foreach ($this->teamsForFilter as $team)
+                        <flux:select.option :value="$team->id">
+                            {{ $team->name }} — {{ $team->club->name }}
+                        </flux:select.option>
+                    @endforeach
+                </flux:select>
+            </div>
+        </div>
+
         <x-listing.table>
             <thead>
                 <tr class="border-b border-zinc-200 text-left text-xs font-medium tracking-wide text-zinc-500 uppercase">
