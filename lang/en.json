@@ -232,6 +232,7 @@
     "Once your account is deleted, all of its resources and data will also be permanently deleted. Please confirm you would like to permanently delete your account.": "Once your account is deleted, all of its resources and data will also be permanently deleted. Please confirm you would like to permanently delete your account.",
     "Once your account is deleted, all of its resources and data will be permanently deleted. Please enter your password to confirm you would like to permanently delete your account.": "Once your account is deleted, all of its resources and data will be permanently deleted. Please enter your password to confirm you would like to permanently delete your account.",
     "Open": "Open",
+    "Opponents": "Opponents",
     "Open in a current window": "Open in a current window",
     "Open in a new window": "Open in a new window",
     "Open in a parent frame": "Open in a parent frame",
@@ -446,5 +447,15 @@
     "You left the team \":name\"": "You left the team \":name\"",
     "You will be prompted for a secure, random pin during login, which you can retrieve from the TOTP-supported application on your phone.": "You will be prompted for a secure, random pin during login, which you can retrieve from the TOTP-supported application on your phone.",
     "You've been invited to join :teamName": "You've been invited to join :teamName",
-    "Your email address is unverified.": "Your email address is unverified."
+    "Your email address is unverified.": "Your email address is unverified.",
+    "Games history": "Games history",
+    "GP": "GP",
+    "Loss": "Loss",
+    "Matchup history": "Matchup history",
+    "No matchups yet.": "No matchups yet.",
+    "No played games yet.": "No played games yet.",
+    "Season Box Score": "Season Statistics",
+    "Season statistics": "Season statistics",
+    "Tie": "Tie",
+    "Win": "Win"
 }

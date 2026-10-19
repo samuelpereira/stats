@@ -23,6 +23,8 @@ use App\Livewire\Statistics\Show;
 use App\Livewire\Teams\Create as CreateTeam;
 use App\Livewire\Teams\Edit as EditTeam;
 use App\Livewire\Teams\Index as TeamIndex;
+use App\Livewire\Teams\SeasonStatistics as TeamSeasonStatistics;
+use App\Livewire\Teams\SharedSeasonStatistics;
 use App\Livewire\Users\Create as CreateUser;
 use App\Livewire\Users\Edit as EditUser;
 use App\Livewire\Users\Index as UserIndex;
@@ -37,6 +39,7 @@ use Illuminate\Support\Facades\Route;
 Route::view('/', 'welcome')->name('home');
 
 Route::livewire('s/{game:share_token}', Shared::class)->name('statistics.shared');
+Route::livewire('s/season/{team:share_token}', SharedSeasonStatistics::class)->name('teams.season-statistics.shared');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('dashboard', Dashboard::class)->name('dashboard');
@@ -55,6 +58,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::livewire('teams', TeamIndex::class)->name('teams.index')->can('viewAny', Team::class);
     Route::livewire('teams/create', CreateTeam::class)->name('teams.create')->can('create', Team::class);
+    Route::livewire('teams/{team}/season-statistics', TeamSeasonStatistics::class)->name('teams.season-statistics')->can('viewSeasonStatistics', 'team');
     Route::livewire('teams/{team}/edit', EditTeam::class)->name('teams.edit')->can('update', 'team');
 
     Route::livewire('players', PlayerIndex::class)->name('players.index')->can('viewAny', Player::class);

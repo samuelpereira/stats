@@ -349,9 +349,9 @@ class Game extends Model
 
     /**
      * @return array{
-     *     players: list<array{id: int, number: int|null, name: string, minutes: string, points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int}>,
+     *     players: list<array{id: int, number: int|null, name: string, seconds: int, minutes: string, plusMinus: int, points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int}>,
      *     court: list<int>,
-     *     team: array{minutes: string, points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int},
+     *     team: array{seconds: int, minutes: string, points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int},
      *     opponent: array{points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int}
      * }
      */
@@ -434,6 +434,7 @@ class Game extends Model
                 'id' => $player->id,
                 'number' => $player->number,
                 'name' => $player->name,
+                'seconds' => $playerSeconds,
                 'minutes' => self::formatPlayed($playerSeconds),
                 'plusMinus' => $plusMinus[$player->id] ?? 0,
                 ...$lines[$player->id],
@@ -444,6 +445,7 @@ class Game extends Model
             'players' => $rows,
             'court' => $lineup['court'],
             'team' => [
+                'seconds' => $played,
                 'minutes' => self::formatPlayed($played),
                 ...$team,
             ],
@@ -534,7 +536,7 @@ class Game extends Model
         }
     }
 
-    private static function formatPlayed(int $seconds): string
+    public static function formatPlayed(int $seconds): string
     {
         return intdiv($seconds, 60).':'.sprintf('%02d', $seconds % 60);
     }
@@ -760,6 +762,22 @@ class Game extends Model
         }
 
         return $this->home_points.'–'.$this->away_points;
+    }
+
+    public function resultLabel(): string
+    {
+        $ours = $this->ourPoints();
+        $theirs = $this->opponentPoints();
+
+        if ($ours > $theirs) {
+            return 'Win';
+        }
+
+        if ($ours < $theirs) {
+            return 'Loss';
+        }
+
+        return 'Tie';
     }
 
     private function shotChartPeriodLabel(int $quarter): string

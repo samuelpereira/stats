@@ -34,6 +34,15 @@ class TeamPolicy
         return $this->manages($user, $team);
     }
 
+    public function viewSeasonStatistics(User $user, Team $team): bool
+    {
+        if ($user->hasRole(RoleName::Administrator)) {
+            return true;
+        }
+
+        return $user->hasRole(RoleName::Club) && $user->club_id === $team->club_id;
+    }
+
     private function manages(User $actor, Team $team): bool
     {
         if (! $actor->can(PermissionName::CreateUsers->value)) {

@@ -432,6 +432,7 @@
     "Open in the topmost frame": "Abra no quadro superior",
     "Open on the website": "Aberto no site",
     "Opponent": "Adversário",
+    "Opponents": "Adversários",
     "Or confirm with password": "Ou confirme com a palavra-passe",
     "Or continue with email": "Ou continue com o email",
     "Or, return to": "Ou volte a",
@@ -532,7 +533,6 @@
     "Restore :name": "Restaurar :name",
     "Retry With": "Tentar novamente com",
     "Role": "Papel",
-    "Roubo": "Roubo",
     "Roubo": "Roubo",
     "Roster": "Plantel",
     "Row :row: :message": "Linha :row: :message",
@@ -776,5 +776,15 @@
     "start of OT:overtime": "início do OT:overtime",
     "start of Q:quarter": "início do Q:quarter",
     "to": "até",
-    "tover": "perda"
+    "tover": "perda",
+    "Games history": "Histórico de jogos",
+    "GP": "J",
+    "Loss": "Derrota",
+    "Matchup history": "Histórico de confrontos",
+    "No matchups yet.": "Ainda sem confrontos.",
+    "No played games yet.": "Ainda sem jogos realizados.",
+    "Season Box Score": "Estatísticas da Época",
+    "Season statistics": "Estatísticas da época",
+    "Tie": "Empate",
+    "Win": "Vitória"
 }
