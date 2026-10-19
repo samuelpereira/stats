@@ -12,6 +12,16 @@ beforeEach(function () {
     $this->seed(RolesAndPermissionsSeeder::class);
 });
 
+test('the season statistics page keeps a single livewire root for the share button', function () {
+    [$access, $team] = sharedSeasonStatisticsTeam();
+
+    $html = Livewire::actingAs($access)
+        ->test(SeasonStatistics::class, ['team' => $team])
+        ->html();
+
+    expect(ltrim($html))->toStartWith('<div');
+});
+
 test('a public link shows the season statistics without signing in', function () {
     [$access, $team] = sharedSeasonStatisticsTeam();
 

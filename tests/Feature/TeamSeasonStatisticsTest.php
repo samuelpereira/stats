@@ -145,6 +145,11 @@ test('season box score accumulates player stats across logged games', function (
         'name' => 'Alex North',
         'number' => 8,
     ]);
+    $scorer = Player::factory()->create([
+        'team_id' => $team->id,
+        'name' => 'Blake High',
+        'number' => 1,
+    ]);
     $bench = Player::factory()->create([
         'team_id' => $team->id,
         'name' => 'Bench Never Played',
@@ -159,7 +164,10 @@ test('season box score accumulates player stats across logged games', function (
             'home_points' => 10,
             'away_points' => 8,
         ]);
-        $game->players()->attach([$player->id => ['starter' => true]]);
+        $game->players()->attach([
+            $player->id => ['starter' => true],
+            $scorer->id => ['starter' => true],
+        ]);
 
         GameEvent::factory()->create([
             'game_id' => $game->id,
@@ -176,6 +184,14 @@ test('season box score accumulates player stats across logged games', function (
             'type' => StatType::TwoPointMade,
             'quarter' => 1,
             'clock' => '09:00',
+        ]);
+        GameEvent::factory()->create([
+            'game_id' => $game->id,
+            'player_id' => $scorer->id,
+            'home_away' => HomeAway::Home,
+            'type' => StatType::ThreePointMade,
+            'quarter' => 1,
+            'clock' => '08:45',
         ]);
         GameEvent::factory()->create([
             'game_id' => $game->id,
@@ -203,7 +219,10 @@ test('season box score accumulates player stats across logged games', function (
         ->and($line['twoMade'])->toBe(2)
         ->and($line['twoAttempts'])->toBe(2)
         ->and($line['gp'])->toBe(2)
-        ->and($boxScore['team']['points'])->toBe(4)
+        ->and($boxScore['players'][0]['id'])->toBe($scorer->id)
+        ->and($boxScore['players'][0]['points'])->toBe(6)
+        ->and($boxScore['players'][1]['id'])->toBe($player->id)
+        ->and($boxScore['team']['points'])->toBe(10)
         ->and($boxScore['team']['gp'])->toBe(2)
         ->and($boxScore['opponent']['points'])->toBe(6)
         ->and($boxScore['opponent']['threeMade'])->toBe(2)
@@ -214,6 +233,7 @@ test('season box score accumulates player stats across logged games', function (
         ->test(SeasonStatistics::class, ['team' => $team])
         ->assertSee(__('Season Box Score'))
         ->assertSee('Alex North')
+        ->assertSee('Blake High')
         ->assertDontSee('Bench Never Played')
         ->assertSee(__('Opponents'))
         ->assertSee('GP');

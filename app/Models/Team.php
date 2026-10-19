@@ -276,6 +276,14 @@ class Team extends Model
             ];
         }
 
+        usort($rows, function (array $left, array $right): int {
+            if ($left['points'] !== $right['points']) {
+                return $right['points'] <=> $left['points'];
+            }
+
+            return strcasecmp($left['name'], $right['name']);
+        });
+
         return [
             'players' => $rows,
             'team' => [
