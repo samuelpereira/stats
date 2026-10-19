@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Enums\FoulKind;
 use App\Enums\HomeAway;
 use App\Enums\StatType;
 use App\Models\Game;
@@ -12,14 +13,24 @@ use InvalidArgumentException;
 
 class RecordGameEvent
 {
-    public function handle(Game $game, ?int $playerId, StatType $type, int $quarter, string $clock, ?HomeAway $side = null, ?int $courtX = null, ?int $courtY = null): GameEvent
-    {
+    public function handle(
+        Game $game,
+        ?int $playerId,
+        StatType $type,
+        int $quarter,
+        string $clock,
+        ?HomeAway $side = null,
+        ?int $courtX = null,
+        ?int $courtY = null,
+        ?FoulKind $foulKind = null,
+    ): GameEvent {
         if ($type->isPeriod()) {
             return GameEvent::query()->create([
                 'game_id' => $game->id,
                 'player_id' => null,
                 'home_away' => null,
                 'type' => $type,
+                'foul_kind' => null,
                 'quarter' => $quarter,
                 'clock' => $this->clock($clock),
             ]);
@@ -33,12 +44,35 @@ class RecordGameEvent
             throw new InvalidArgumentException('A game event needs a home or away side.');
         }
 
+        if ($type !== StatType::Foul) {
+            $foulKind = null;
+        }
+
         if ($type === StatType::Timeout || $side !== $game->home_away) {
             return GameEvent::query()->create([
                 'game_id' => $game->id,
                 'player_id' => null,
                 'home_away' => $side,
                 'type' => $type,
+                'foul_kind' => $foulKind,
+                'quarter' => $quarter,
+                'clock' => $this->clock($clock),
+                'court_x' => $courtX,
+                'court_y' => $courtY,
+            ]);
+        }
+
+        if ($playerId === null) {
+            if ($type !== StatType::Foul || ! $foulKind?->allowsCoach()) {
+                throw new InvalidArgumentException('A game event needs a player.');
+            }
+
+            return GameEvent::query()->create([
+                'game_id' => $game->id,
+                'player_id' => null,
+                'home_away' => $side,
+                'type' => $type,
+                'foul_kind' => $foulKind,
                 'quarter' => $quarter,
                 'clock' => $this->clock($clock),
                 'court_x' => $courtX,
@@ -60,6 +94,7 @@ class RecordGameEvent
             'player_id' => $player->id,
             'home_away' => $side,
             'type' => $type,
+            'foul_kind' => $foulKind,
             'quarter' => $quarter,
             'clock' => $this->clock($clock),
             'court_x' => $courtX,
@@ -82,6 +117,7 @@ class RecordGameEvent
             'outgoing_player_id' => $outgoing->id,
             'home_away' => $game->home_away,
             'type' => StatType::Substitution,
+            'foul_kind' => null,
             'quarter' => $quarter,
             'clock' => $this->clock($clock),
         ]);

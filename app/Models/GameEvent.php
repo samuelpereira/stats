@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\FoulKind;
 use App\Enums\HomeAway;
 use App\Enums\StatType;
 use Carbon\CarbonImmutable;
@@ -18,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int|null $outgoing_player_id
  * @property HomeAway|null $home_away
  * @property StatType $type
+ * @property FoulKind|null $foul_kind
  * @property int $quarter
  * @property string $clock
  * @property int|null $court_x
@@ -28,7 +30,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property-read Player|null $player
  * @property-read Player|null $outgoingPlayer
  */
-#[Fillable(['game_id', 'player_id', 'outgoing_player_id', 'home_away', 'type', 'quarter', 'clock', 'court_x', 'court_y'])]
+#[Fillable(['game_id', 'player_id', 'outgoing_player_id', 'home_away', 'type', 'foul_kind', 'quarter', 'clock', 'court_x', 'court_y'])]
 class GameEvent extends Model
 {
     /** @use HasFactory<GameEventFactory> */
@@ -41,6 +43,7 @@ class GameEvent extends Model
     {
         return [
             'type' => StatType::class,
+            'foul_kind' => FoulKind::class,
             'quarter' => 'integer',
             'court_x' => 'integer',
             'court_y' => 'integer',

@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\FoulKind;
 use App\Enums\GameStatus;
 use App\Enums\HomeAway;
 use App\Enums\StatType;
@@ -908,6 +909,140 @@ test('a fifth team foul stays on the collector so a one can be marked', function
         ->and($shots[1]->type)->toBe(StatType::FreeThrowMissed)
         ->and($shots[1]->player_id)->toBeNull()
         ->and(GameEvent::query()->where('type', StatType::Foul)->count())->toBe(5);
+});
+
+test('a special foul on a player counts for personal and team fouls and appears as TF in the box score', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+        'home_away' => HomeAway::Home,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    statisticsRecord($member, $game)
+        ->call('select', StatType::Foul->value)
+        ->call('setPendingFoulKind', FoulKind::Technical->value)
+        ->call('record', $player->id)
+        ->assertSee('">1</span> FP', false)
+        ->assertSee('teamFoulCount()">1</span>', false)
+        ->assertSee('tech foul');
+
+    $event = GameEvent::query()->where('type', StatType::Foul)->first();
+    $boxScore = $game->fresh()->boxScore();
+    $line = collect($boxScore['players'])->firstWhere('id', $player->id);
+
+    expect($event)->not->toBeNull()
+        ->and($event->foul_kind)->toBe(FoulKind::Technical)
+        ->and($event->player_id)->toBe($player->id)
+        ->and($line['fouls'])->toBe(0)
+        ->and($line['technicalFouls'])->toBe(1)
+        ->and($boxScore['team']['fouls'])->toBe(0)
+        ->and($boxScore['team']['technicalFouls'])->toBe(1)
+        ->and($game->teamFoulsForPeriod(1))->toBe(['home' => 1, 'away' => 0]);
+});
+
+test('a technical foul on the coach counts for team fouls only and is omitted from the box score', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+        'home_away' => HomeAway::Home,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    statisticsRecord($member, $game)
+        ->call('select', StatType::Foul->value)
+        ->call('setPendingFoulKind', FoulKind::Technical->value)
+        ->call('recordCoach')
+        ->assertSee('teamFoulCount()">1</span>', false)
+        ->assertSee('Coach / Bench')
+        ->assertSee('tech foul');
+
+    $event = GameEvent::query()->where('type', StatType::Foul)->first();
+    $boxScore = $game->fresh()->boxScore();
+
+    expect($event)->not->toBeNull()
+        ->and($event->foul_kind)->toBe(FoulKind::Technical)
+        ->and($event->player_id)->toBeNull()
+        ->and($boxScore['team']['fouls'])->toBe(0)
+        ->and($boxScore['team']['technicalFouls'])->toBe(0)
+        ->and($game->teamFoulsForPeriod(1))->toBe(['home' => 1, 'away' => 0]);
+});
+
+test('a disruptive foul cannot be recorded against the coach', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    statisticsRecord($member, $game)
+        ->call('select', StatType::Foul->value)
+        ->call('setPendingFoulKind', FoulKind::Disruptive->value)
+        ->call('recordCoach');
+
+    expect(GameEvent::query()->where('type', StatType::Foul)->count())->toBe(0);
+});
+
+test('a disruptive foul counts in the PF box score column not TF', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+        'home_away' => HomeAway::Home,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    statisticsRecord($member, $game)
+        ->call('select', StatType::Foul->value)
+        ->call('setPendingFoulKind', FoulKind::Disruptive->value)
+        ->call('record', $player->id);
+
+    $boxScore = $game->fresh()->boxScore();
+    $line = collect($boxScore['players'])->firstWhere('id', $player->id);
+
+    expect($line['fouls'])->toBe(1)
+        ->and($line['technicalFouls'])->toBe(0)
+        ->and($boxScore['team']['fouls'])->toBe(1)
+        ->and($boxScore['team']['technicalFouls'])->toBe(0)
+        ->and($game->teamFoulsForPeriod(1))->toBe(['home' => 1, 'away' => 0]);
+});
+
+test('a queued special foul stores its kind', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+        'home_away' => HomeAway::Home,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    statisticsRecord($member, $game)
+        ->call('applyCollectedAction', fake()->uuid(), 'record', [
+            'type' => StatType::Foul->value,
+            'playerId' => $player->id,
+            'forOpponent' => false,
+            'foulKind' => FoulKind::Flagrant->value,
+            'quarter' => 1,
+            'clock' => '05:00',
+            'courtX' => null,
+            'courtY' => null,
+        ])
+        ->assertHasNoErrors();
+
+    expect(GameEvent::query()->where('type', StatType::Foul)->first()?->foul_kind)->toBe(FoulKind::Flagrant);
 });
 
 test('a club member undoes the latest statistics entry', function () {

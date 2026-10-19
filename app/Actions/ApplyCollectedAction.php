@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Enums\FoulKind;
 use App\Enums\GameStatus;
 use App\Enums\HomeAway;
 use App\Enums\StatType;
@@ -91,14 +92,23 @@ class ApplyCollectedAction
             $courtY = null;
         }
 
+        $foulKind = $this->foulKind($type, $payload['foulKind'] ?? null);
         $playerId = null;
 
         if (! $forOpponent) {
-            $playerId = $this->requiredInt($payload['playerId'] ?? null, 'playerId');
-            $court = $game->lineupState($clock, true)['court'];
+            $rawPlayerId = $payload['playerId'] ?? null;
 
-            if (! in_array($playerId, $court, true)) {
-                $this->invalid('playerId', __('The collected action is not valid.'));
+            if ($rawPlayerId === null || $rawPlayerId === '') {
+                if ($type !== StatType::Foul || ! $foulKind?->allowsCoach()) {
+                    $this->invalid('playerId', __('The collected action is not valid.'));
+                }
+            } else {
+                $playerId = $this->requiredInt($rawPlayerId, 'playerId');
+                $court = $game->lineupState($clock, true)['court'];
+
+                if (! in_array($playerId, $court, true)) {
+                    $this->invalid('playerId', __('The collected action is not valid.'));
+                }
             }
         }
 
@@ -111,6 +121,7 @@ class ApplyCollectedAction
             $game->sideFor($forOpponent),
             $courtX,
             $courtY,
+            $foulKind,
         );
     }
 
@@ -272,11 +283,23 @@ class ApplyCollectedAction
         $playerId = null;
         $outgoingPlayerId = null;
 
+        $foulKind = $this->foulKind($type, $payload['foulKind'] ?? null);
+
         if ($type === StatType::Substitution) {
             $playerId = $this->requiredInt($payload['playerId'] ?? null, 'playerId');
             $outgoingPlayerId = $this->requiredInt($payload['outgoingPlayerId'] ?? null, 'outgoingPlayerId');
         } elseif ($type->isAssignableStat()) {
-            $playerId = $forOpponent ? null : $this->requiredInt($payload['playerId'] ?? null, 'playerId');
+            $rawPlayerId = $payload['playerId'] ?? null;
+
+            if ($forOpponent) {
+                $playerId = null;
+            } elseif ($rawPlayerId === null || $rawPlayerId === '') {
+                if ($type !== StatType::Foul || ! $foulKind?->allowsCoach()) {
+                    $this->invalid('playerId', __('The collected action is not valid.'));
+                }
+            } else {
+                $playerId = $this->requiredInt($rawPlayerId, 'playerId');
+            }
         } elseif ($type !== StatType::Timeout) {
             $this->invalid('type', __('The collected action is not valid.'));
         }
@@ -289,6 +312,7 @@ class ApplyCollectedAction
             $clock,
             $outgoingPlayerId,
             $forOpponent,
+            $foulKind,
         );
     }
 
@@ -342,6 +366,25 @@ class ApplyCollectedAction
         }
 
         return $stat;
+    }
+
+    private function foulKind(StatType $type, mixed $kind): ?FoulKind
+    {
+        if ($type !== StatType::Foul || $kind === null || $kind === '') {
+            return null;
+        }
+
+        if (! is_string($kind)) {
+            $this->invalid('foulKind', __('The collected action is not valid.'));
+        }
+
+        $foulKind = FoulKind::tryFrom($kind);
+
+        if (! $foulKind instanceof FoulKind) {
+            $this->invalid('foulKind', __('The collected action is not valid.'));
+        }
+
+        return $foulKind;
     }
 
     private function clock(mixed $clock): string

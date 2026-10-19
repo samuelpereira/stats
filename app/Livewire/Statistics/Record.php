@@ -7,6 +7,7 @@ use App\Actions\DeleteLatestGameEvent;
 use App\Actions\FinishCollectedGame;
 use App\Actions\RecordGameEvent;
 use App\Actions\UpdateGameEventType;
+use App\Enums\FoulKind;
 use App\Enums\GameStatus;
 use App\Enums\HomeAway;
 use App\Enums\StatType;
@@ -37,6 +38,8 @@ class Record extends Component
     public Game $game;
 
     public ?string $pendingType = null;
+
+    public ?string $pendingFoulKind = null;
 
     public int $quarter = 1;
 
@@ -70,6 +73,8 @@ class Record extends Component
     public string $editingEventClock = '';
 
     public bool $editingForOpponent = false;
+
+    public ?string $editingFoulKind = null;
 
     public bool $choosingTimeout = false;
 
@@ -166,13 +171,32 @@ class Record extends Component
         $this->substituting = false;
         $this->courtSelection = [];
         $this->pendingType = $this->pendingType === $stat->value ? null : $stat->value;
+        $this->pendingFoulKind = null;
         $this->choosingPlayer = $this->pendingType !== null;
+    }
+
+    public function setPendingFoulKind(?string $kind): void
+    {
+        $this->authorize('collect', $this->game);
+
+        if ($this->pendingType !== StatType::Foul->value) {
+            return;
+        }
+
+        if ($kind === null || $kind === '') {
+            $this->pendingFoulKind = null;
+
+            return;
+        }
+
+        $this->pendingFoulKind = FoulKind::tryFrom($kind)?->value;
     }
 
     public function updatedChoosingPlayer(bool $open): void
     {
         if (! $open) {
             $this->pendingType = null;
+            $this->pendingFoulKind = null;
         }
     }
 
@@ -188,6 +212,7 @@ class Record extends Component
     public function cancel(): void
     {
         $this->pendingType = null;
+        $this->pendingFoulKind = null;
         $this->choosingPlayer = false;
         $this->choosingShotLocation = false;
         $this->shotPlayerId = null;
@@ -543,6 +568,19 @@ class Record extends Component
         $this->store($recordGameEvent, null, true);
     }
 
+    public function recordCoach(RecordGameEvent $recordGameEvent, ?string $clock = null): void
+    {
+        $this->applyCollectedClock($clock);
+
+        $foulKind = FoulKind::tryFrom($this->pendingFoulKind ?? '');
+
+        if ($this->pendingType !== StatType::Foul->value || ! $foulKind?->allowsCoach()) {
+            return;
+        }
+
+        $this->store($recordGameEvent, null, false);
+    }
+
     public function recordShotLocation(int $courtX, int $courtY, RecordGameEvent $recordGameEvent, ?string $clock = null): void
     {
         $this->authorize('collect', $this->game);
@@ -784,6 +822,7 @@ class Record extends Component
         $this->editingType = $event->type->value;
         $this->editingEventClock = $event->clock;
         $this->editingOutgoingPlayerId = $event->outgoing_player_id;
+        $this->editingFoulKind = $event->foul_kind?->value;
         $this->editingForOpponent = $event->type === StatType::Timeout
             ? ! $this->game->isOurSide($event->home_away)
             : ($event->type->isAssignableStat() && ! $this->game->isOurSide($event->home_away));
@@ -793,6 +832,39 @@ class Record extends Component
         $this->editingAction = true;
         $this->resetErrorBag('editingEventClock');
         unset($this->editingTypeChoices);
+    }
+
+    public function setEditingFoulKind(?string $kind): void
+    {
+        $this->authorize('collect', $this->game);
+
+        if ($this->editingType !== StatType::Foul->value) {
+            return;
+        }
+
+        if ($kind === null || $kind === '') {
+            $this->editingFoulKind = null;
+
+            return;
+        }
+
+        $this->editingFoulKind = FoulKind::tryFrom($kind)?->value;
+
+        if ($this->editingFoulKind !== FoulKind::Technical->value && $this->editingPlayerId === null && ! $this->editingForOpponent) {
+            $this->editingForOpponent = false;
+        }
+    }
+
+    public function selectEditingCoach(): void
+    {
+        $this->authorize('collect', $this->game);
+
+        if ($this->editingType !== StatType::Foul->value || $this->editingFoulKind !== FoulKind::Technical->value) {
+            return;
+        }
+
+        $this->editingPlayerId = null;
+        $this->editingForOpponent = false;
     }
 
     public function selectEditingType(string $type): void
@@ -872,12 +944,18 @@ class Record extends Component
             return;
         }
 
+        $foulKind = $stat === StatType::Foul
+            ? FoulKind::tryFrom($this->editingFoulKind ?? '')
+            : null;
+
         if ($stat === StatType::Substitution) {
             if ($this->editingPlayerId === null || $this->editingOutgoingPlayerId === null) {
                 return;
             }
         } elseif ($stat->isAssignableStat() && ! $this->editingForOpponent && $this->editingPlayerId === null) {
-            return;
+            if ($stat !== StatType::Foul || ! $foulKind?->allowsCoach()) {
+                return;
+            }
         }
 
         $updateGameEventType->handle(
@@ -888,6 +966,7 @@ class Record extends Component
             $this->editingEventClock,
             $this->editingOutgoingPlayerId,
             $this->editingForOpponent,
+            $foulKind,
         );
 
         $this->clearEditingAction();
@@ -919,6 +998,7 @@ class Record extends Component
         $this->editingOutgoingPlayerId = null;
         $this->editingEventClock = '';
         $this->editingForOpponent = false;
+        $this->editingFoulKind = null;
         $this->resetErrorBag('editingEventClock');
         unset($this->editingTypeChoices);
     }
@@ -1292,7 +1372,9 @@ class Record extends Component
             if (! $ours) {
                 $playerLabel = $this->game->opponent;
             } elseif ($event->player === null) {
-                $playerLabel = $this->game->team->name;
+                $playerLabel = $event->type === StatType::Foul
+                    ? __('Coach / Bench')
+                    : $this->game->team->name;
             } else {
                 $playerLabel = $this->loggedPlayer($event->player);
             }
@@ -1308,7 +1390,9 @@ class Record extends Component
 
             $lines[] = [
                 'id' => $event->id,
-                'label' => $event->type->logLabel(),
+                'label' => $event->type === StatType::Foul && $event->foul_kind instanceof FoulKind
+                    ? $event->foul_kind->logLabel()
+                    : $event->type->logLabel(),
                 'player' => $playerLabel,
                 'playerLines' => $playerLines,
                 'detail' => $shooting === null
@@ -1433,6 +1517,18 @@ class Record extends Component
                 StatType::Block->value => __(StatType::Block->pickerTitle()),
                 StatType::Foul->value => __(StatType::Foul->pickerTitle()),
             ],
+            'foulKinds' => array_map(
+                fn (FoulKind $kind): array => [
+                    'value' => $kind->value,
+                    'label' => __($kind->pickerTitle()),
+                    'logLabel' => __($kind->logLabel()),
+                    'allowsCoach' => $kind->allowsCoach(),
+                ],
+                FoulKind::cases(),
+            ),
+            'personalFoulLabel' => __('Personal foul'),
+            'specialFoulLabel' => __('Special foul'),
+            'coachBenchLabel' => __('Coach / Bench'),
             'templates' => [
                 'startOfQuarter' => __('Start of Q:quarter', ['quarter' => ':quarter']),
                 'startOfOvertime' => __('Start of OT:overtime', ['overtime' => ':overtime']),
@@ -1499,13 +1595,22 @@ class Record extends Component
         }
 
         $type = StatType::from($this->pendingType);
+        $foulKind = $type === StatType::Foul
+            ? FoulKind::tryFrom($this->pendingFoulKind ?? '')
+            : null;
 
         if ($this->game->mark_shot_location && $type->isFieldGoal() && ($courtX === null || $courtY === null)) {
             return;
         }
 
-        if (! $forOpponent && ($playerId === null || ! in_array($playerId, $this->lineup()['court'], true))) {
-            throw (new ModelNotFoundException)->setModel(Player::class, [$playerId ?? 0]);
+        if (! $forOpponent) {
+            if ($playerId === null) {
+                if ($type !== StatType::Foul || ! $foulKind?->allowsCoach()) {
+                    throw (new ModelNotFoundException)->setModel(Player::class, [0]);
+                }
+            } elseif (! in_array($playerId, $this->lineup()['court'], true)) {
+                throw (new ModelNotFoundException)->setModel(Player::class, [$playerId]);
+            }
         }
 
         $validated = $this->validate($this->rules());
@@ -1519,9 +1624,11 @@ class Record extends Component
             $this->game->sideFor($forOpponent),
             $courtX,
             $courtY,
+            $foulKind,
         ));
 
         $this->pendingType = null;
+        $this->pendingFoulKind = null;
         $this->choosingPlayer = false;
         $this->finishShotLocation();
         unset($this->lines, $this->fouls, $this->timeouts, $this->lineup);

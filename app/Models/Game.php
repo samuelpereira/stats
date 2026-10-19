@@ -380,10 +380,10 @@ class Game extends Model
 
     /**
      * @return array{
-     *     players: list<array{id: int, number: int|null, name: string, seconds: int, minutes: string, plusMinus: int, points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int}>,
+     *     players: list<array{id: int, number: int|null, name: string, seconds: int, minutes: string, plusMinus: int, points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int, technicalFouls: int}>,
      *     court: list<int>,
-     *     team: array{seconds: int, minutes: string, points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int},
-     *     opponent: array{points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int}
+     *     team: array{seconds: int, minutes: string, points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int, technicalFouls: int},
+     *     opponent: array{points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int, technicalFouls: int}
      * }
      */
     public function boxScore(): array
@@ -443,16 +443,20 @@ class Game extends Model
             }
 
             if ($this->isOurSide($event->home_away)) {
-                $this->addBoxStat($team, $event->type);
+                if ($event->type === StatType::Foul && $event->player_id === null) {
+                    continue;
+                }
+
+                $this->addBoxStat($team, $event);
 
                 if ($event->player_id !== null && isset($lines[$event->player_id])) {
-                    $this->addBoxStat($lines[$event->player_id], $event->type);
+                    $this->addBoxStat($lines[$event->player_id], $event);
                 }
 
                 continue;
             }
 
-            $this->addBoxStat($opponent, $event->type);
+            $this->addBoxStat($opponent, $event);
         }
 
         $played = 0;
@@ -485,7 +489,7 @@ class Game extends Model
     }
 
     /**
-     * @return array{points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int}
+     * @return array{points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int, technicalFouls: int}
      */
     private function emptyBoxLine(): array
     {
@@ -504,14 +508,16 @@ class Game extends Model
             'steals' => 0,
             'blocks' => 0,
             'fouls' => 0,
+            'technicalFouls' => 0,
         ];
     }
 
     /**
-     * @param  array{points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int}  $line
+     * @param  array{points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int, technicalFouls: int}  $line
      */
-    private function addBoxStat(array &$line, StatType $type): void
+    private function addBoxStat(array &$line, GameEvent $event): void
     {
+        $type = $event->type;
         $line['points'] += $type->points();
 
         if ($type === StatType::TwoPointMade || $type === StatType::TwoPointMissed) {
@@ -563,7 +569,11 @@ class Game extends Model
         }
 
         if ($type === StatType::Foul) {
-            $line['fouls']++;
+            if ($event->foul_kind?->countsInTechnicalColumn()) {
+                $line['technicalFouls']++;
+            } else {
+                $line['fouls']++;
+            }
         }
     }
 

@@ -248,7 +248,7 @@
     "No games were found on the page (unexpected structure or empty page).": "Não foram encontrados jogos na página (estrutura inesperada ou página vazia).",
     "No roster was found on the page (unexpected structure or no athletes).": "Não foi encontrado plantel na página (estrutura inesperada ou sem atletas).",
     "Failed to fetch the FPB page (HTTP :status).": "Falha ao obter a página FPB (HTTP :status).",
-    "FT": "FT",
+    "FT": "LL",
     "FTM-A": "FTM-A",
     "Failed Dependency": "Dependência com Falha",
     "Female": "Feminino",
@@ -790,5 +790,17 @@
     "Season Box Score": "Estatísticas da Época",
     "Season statistics": "Estatísticas da época",
     "Tie": "Empate",
-    "Win": "Vitória"
+    "Win": "Vitória",
+    "TF": "FT",
+    "tech foul": "falta técnica",
+    "disruptive foul": "falta disruptiva",
+    "flagrant foul": "falta flagrante",
+    "disqualifying foul": "falta desqual",
+    "Technical": "Técnica",
+    "Disruptive": "Disruptiva",
+    "Flagrant": "Flagrante",
+    "Disqualifying": "Desqualificante",
+    "Personal foul": "Falta pessoal",
+    "Special foul": "Falta especial",
+    "Coach / Bench": "Treinador / Banco"
 }

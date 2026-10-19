@@ -459,6 +459,17 @@
         </div>
     </header>
     <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-6">
+        <div x-cloak x-show="$store.collectQueue.pendingType === 'foul'" class="mb-4 space-y-2">
+            <div class="grid grid-cols-2 gap-2">
+                <button type="button" x-on:click="$store.collectQueue.setFoulKind(null)" class="rounded-lg border px-3 py-2 text-sm font-medium" :class="$store.collectQueue.pendingFoulKind === null ? 'border-zinc-900 bg-amber-100 text-zinc-900' : 'border-zinc-300 bg-white text-zinc-900'" x-text="$store.collectQueue.baseline?.personalFoulLabel ?? 'Personal foul'"></button>
+                <button type="button" x-on:click="$store.collectQueue.setFoulKind(($store.collectQueue.baseline?.foulKinds ?? [])[0]?.value ?? 'technical')" class="rounded-lg border px-3 py-2 text-sm font-medium" :class="$store.collectQueue.pendingFoulKind !== null ? 'border-zinc-900 bg-amber-100 text-zinc-900' : 'border-zinc-300 bg-white text-zinc-900'" x-text="$store.collectQueue.baseline?.specialFoulLabel ?? 'Special foul'"></button>
+            </div>
+            <div x-cloak x-show="$store.collectQueue.pendingFoulKind !== null" class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <template x-for="kind in ($store.collectQueue.baseline?.foulKinds ?? [])" :key="kind.value">
+                    <button type="button" x-on:click="$store.collectQueue.setFoulKind(kind.value)" class="rounded-lg border px-3 py-2 text-sm font-medium" :class="$store.collectQueue.pendingFoulKind === kind.value ? 'border-zinc-900 bg-amber-100 text-zinc-900' : 'border-zinc-300 bg-white text-zinc-900'" x-text="kind.label"></button>
+                </template>
+            </div>
+        </div>
         <div class="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
             <template x-for="player in $store.collectQueue.courtPlayers()" :key="player.id">
                 <button type="button" x-on:click="$store.collectQueue.recordPlayer(player.id)" class="flex w-full items-center gap-3 rounded-lg border border-zinc-300 bg-white px-3 py-3 text-left hover:border-zinc-900 sm:rounded-xl sm:py-4">
@@ -481,6 +492,9 @@
         </div>
         <div class="mt-4 border-t border-zinc-200 pt-3">
             <div class="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
+                <button type="button" x-cloak x-show="$store.collectQueue.foulKindAllowsCoach()" x-on:click="$store.collectQueue.recordCoach()" class="flex w-full items-center gap-3 rounded-lg border border-zinc-300 bg-white px-3 py-3 text-left hover:border-zinc-900 sm:rounded-xl sm:py-4">
+                    <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base" x-text="$store.collectQueue.baseline?.coachBenchLabel ?? 'Coach / Bench'"></span>
+                </button>
                 <button type="button" x-on:click="$store.collectQueue.recordOpponent()" class="flex w-full items-center gap-3 rounded-lg border border-zinc-300 bg-white px-3 py-3 text-left hover:border-zinc-900 sm:rounded-xl sm:py-4">
                     @include('livewire.statistics.partials.opponent-mark')
                     <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{{ $opponentName }}</span>
@@ -628,6 +642,17 @@
                 <button type="button" x-on:click="$store.collectQueue.editingType = stat.value" class="w-full rounded-lg border bg-white px-3 py-2 text-sm font-medium" :class="{ 'border-green-700 text-green-700': stat.tone === 'made', 'border-red-700 text-red-700': stat.tone === 'missed', 'border-zinc-300 text-zinc-900': stat.tone === 'plain', 'ring-2 ring-zinc-900 ring-inset': $store.collectQueue.editingType === stat.value }" x-text="stat.label"></button>
             </template>
         </div>
+        <div x-cloak x-show="$store.collectQueue.editingType === 'foul'" class="mx-auto mt-6 max-w-md space-y-2">
+            <div class="grid grid-cols-2 gap-2">
+                <button type="button" x-on:click="$store.collectQueue.setEditingFoulKind(null)" class="rounded-lg border px-3 py-2 text-sm font-medium" :class="$store.collectQueue.editingFoulKind === null ? 'border-zinc-900 bg-amber-100 text-zinc-900' : 'border-zinc-300 bg-white text-zinc-900'" x-text="$store.collectQueue.baseline?.personalFoulLabel ?? 'Personal foul'"></button>
+                <button type="button" x-on:click="$store.collectQueue.setEditingFoulKind(($store.collectQueue.baseline?.foulKinds ?? [])[0]?.value ?? 'technical')" class="rounded-lg border px-3 py-2 text-sm font-medium" :class="$store.collectQueue.editingFoulKind !== null ? 'border-zinc-900 bg-amber-100 text-zinc-900' : 'border-zinc-300 bg-white text-zinc-900'" x-text="$store.collectQueue.baseline?.specialFoulLabel ?? 'Special foul'"></button>
+            </div>
+            <div x-cloak x-show="$store.collectQueue.editingFoulKind !== null" class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <template x-for="kind in ($store.collectQueue.baseline?.foulKinds ?? [])" :key="'edit-kind-' + kind.value">
+                    <button type="button" x-on:click="$store.collectQueue.setEditingFoulKind(kind.value)" class="rounded-lg border px-3 py-2 text-sm font-medium" :class="$store.collectQueue.editingFoulKind === kind.value ? 'border-zinc-900 bg-amber-100 text-zinc-900' : 'border-zinc-300 bg-white text-zinc-900'" x-text="kind.label"></button>
+                </template>
+            </div>
+        </div>
         <div class="mt-6 flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
             <template x-for="player in $store.collectQueue.baseline?.roster ?? []" :key="'edit-' + player.id">
                 <button type="button" x-on:click="$store.collectQueue.editingPlayerId = player.id; $store.collectQueue.editingForOpponent = false" class="flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4" :class="! $store.collectQueue.editingForOpponent && $store.collectQueue.editingPlayerId === player.id ? 'border-zinc-900 bg-amber-100' : 'border-zinc-300 bg-white'">
@@ -635,6 +660,9 @@
                     <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base" x-text="player.name"></span>
                 </button>
             </template>
+            <button type="button" x-cloak x-show="$store.collectQueue.editingFoulAllowsCoach()" x-on:click="$store.collectQueue.editingPlayerId = null; $store.collectQueue.editingForOpponent = false" class="flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4" :class="! $store.collectQueue.editingForOpponent && $store.collectQueue.editingPlayerId === null ? 'border-zinc-900 bg-amber-100' : 'border-zinc-300 bg-white'">
+                <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base" x-text="$store.collectQueue.baseline?.coachBenchLabel ?? 'Coach / Bench'"></span>
+            </button>
             <button type="button" x-on:click="$store.collectQueue.editingPlayerId = null; $store.collectQueue.editingForOpponent = true" class="flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4" :class="$store.collectQueue.editingForOpponent ? 'border-zinc-900 bg-amber-100' : 'border-zinc-300 bg-white'">
                 <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{{ $opponentName }}</span>
             </button>
@@ -677,6 +705,21 @@
                 <p class="px-4 text-center text-xs text-zinc-500">{{ $message }}</p>
             @enderror
             <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-6">
+                @if ($pendingStat === \App\Enums\StatType::Foul)
+                    <div class="mb-4 space-y-2">
+                        <div class="grid grid-cols-2 gap-2">
+                            <button type="button" wire:click="setPendingFoulKind(null)" @class(['rounded-lg border px-3 py-2 text-sm font-medium', 'border-zinc-900 bg-amber-100 text-zinc-900' => $pendingFoulKind === null, 'border-zinc-300 bg-white text-zinc-900' => $pendingFoulKind !== null])>{{ __('Personal foul') }}</button>
+                            <button type="button" wire:click="setPendingFoulKind('{{ \App\Enums\FoulKind::Technical->value }}')" @class(['rounded-lg border px-3 py-2 text-sm font-medium', 'border-zinc-900 bg-amber-100 text-zinc-900' => $pendingFoulKind !== null, 'border-zinc-300 bg-white text-zinc-900' => $pendingFoulKind === null])>{{ __('Special foul') }}</button>
+                        </div>
+                        @if ($pendingFoulKind !== null)
+                            <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                @foreach (\App\Enums\FoulKind::cases() as $kind)
+                                    <button type="button" wire:key="pending-foul-{{ $kind->value }}" wire:click="setPendingFoulKind('{{ $kind->value }}')" @class(['rounded-lg border px-3 py-2 text-sm font-medium', 'border-zinc-900 bg-amber-100 text-zinc-900' => $pendingFoulKind === $kind->value, 'border-zinc-300 bg-white text-zinc-900' => $pendingFoulKind !== $kind->value])>{{ __($kind->pickerTitle()) }}</button>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+                @endif
                 <div class="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
                     @foreach ($this->courtPlayers as $player)
                         <button
@@ -684,7 +727,7 @@
                             wire:key="player-{{ $player->id }}"
                             x-on:click="$wire.record({{ $player->id }}, $store.gameClock?.formatted ?? null)"
                             wire:loading.attr="disabled"
-                            wire:target="record, recordOpponent, recordShotLocation"
+                            wire:target="record, recordOpponent, recordCoach, recordShotLocation"
                             class="flex w-full items-center gap-3 rounded-lg border border-zinc-300 bg-white px-3 py-3 text-left hover:border-zinc-900 sm:rounded-xl sm:py-4"
                         >
                             <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 bg-zinc-900 text-base font-bold tabular-nums text-white sm:size-14 sm:text-lg">{{ $player->number ?? '—' }}</span>
@@ -709,11 +752,22 @@
                 </div>
                 <div class="mt-4 border-t border-zinc-200 pt-3">
                     <div class="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
+                        @if ($pendingStat === \App\Enums\StatType::Foul && $pendingFoulKind === \App\Enums\FoulKind::Technical->value)
+                            <button
+                                type="button"
+                                x-on:click="$wire.recordCoach($store.gameClock?.formatted ?? null)"
+                                wire:loading.attr="disabled"
+                                wire:target="record, recordOpponent, recordCoach, recordShotLocation"
+                                class="flex w-full items-center gap-3 rounded-lg border border-zinc-300 bg-white px-3 py-3 text-left hover:border-zinc-900 sm:rounded-xl sm:py-4"
+                            >
+                                <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{{ __('Coach / Bench') }}</span>
+                            </button>
+                        @endif
                         <button
                             type="button"
                             x-on:click="$wire.recordOpponent($store.gameClock?.formatted ?? null)"
                             wire:loading.attr="disabled"
-                            wire:target="record, recordOpponent, recordShotLocation"
+                            wire:target="record, recordOpponent, recordCoach, recordShotLocation"
                             class="flex w-full items-center gap-3 rounded-lg border border-zinc-300 bg-white px-3 py-3 text-left hover:border-zinc-900 sm:rounded-xl sm:py-4"
                         >
                             @include('livewire.statistics.partials.opponent-mark')
@@ -833,6 +887,21 @@
                         @endforeach
                     </div>
                 @endif
+                @if ($editingType === \App\Enums\StatType::Foul->value)
+                    <div class="mx-auto mt-6 max-w-md space-y-2">
+                        <div class="grid grid-cols-2 gap-2">
+                            <button type="button" wire:click="setEditingFoulKind(null)" @class(['rounded-lg border px-3 py-2 text-sm font-medium', 'border-zinc-900 bg-amber-100 text-zinc-900' => $editingFoulKind === null, 'border-zinc-300 bg-white text-zinc-900' => $editingFoulKind !== null])>{{ __('Personal foul') }}</button>
+                            <button type="button" wire:click="setEditingFoulKind('{{ \App\Enums\FoulKind::Technical->value }}')" @class(['rounded-lg border px-3 py-2 text-sm font-medium', 'border-zinc-900 bg-amber-100 text-zinc-900' => $editingFoulKind !== null, 'border-zinc-300 bg-white text-zinc-900' => $editingFoulKind === null])>{{ __('Special foul') }}</button>
+                        </div>
+                        @if ($editingFoulKind !== null)
+                            <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                @foreach (\App\Enums\FoulKind::cases() as $kind)
+                                    <button type="button" wire:key="edit-foul-{{ $kind->value }}" wire:click="setEditingFoulKind('{{ $kind->value }}')" @class(['rounded-lg border px-3 py-2 text-sm font-medium', 'border-zinc-900 bg-amber-100 text-zinc-900' => $editingFoulKind === $kind->value, 'border-zinc-300 bg-white text-zinc-900' => $editingFoulKind !== $kind->value])>{{ __($kind->pickerTitle()) }}</button>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+                @endif
                 <div class="mt-6 flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
                     @foreach ($this->attachedPlayers as $player)
                         <button
@@ -849,6 +918,19 @@
                             <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{{ $player->name }}</span>
                         </button>
                     @endforeach
+                    @if ($editingType === \App\Enums\StatType::Foul->value && $editingFoulKind === \App\Enums\FoulKind::Technical->value)
+                        <button
+                            type="button"
+                            wire:click="selectEditingCoach"
+                            @class([
+                                'flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4',
+                                'border-zinc-900 bg-amber-100' => ! $editingForOpponent && $editingPlayerId === null,
+                                'border-zinc-300 bg-white hover:border-zinc-900' => $editingForOpponent || $editingPlayerId !== null,
+                            ])
+                        >
+                            <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{{ __('Coach / Bench') }}</span>
+                        </button>
+                    @endif
                     <button
                         type="button"
                         wire:click="selectEditingOpponent"

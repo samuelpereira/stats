@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Enums\FoulKind;
 use App\Enums\StatType;
 use App\Models\Game;
 use App\Models\GameEvent;
@@ -19,6 +20,7 @@ class UpdateGameEventType
         string $clock,
         ?int $outgoingPlayerId = null,
         bool $forOpponent = false,
+        ?FoulKind $foulKind = null,
     ): void {
         $event = $game->events()->whereKey($eventId)->first();
 
@@ -40,7 +42,7 @@ class UpdateGameEventType
             return;
         }
 
-        $this->updateStat($game, $event, $type, $playerId, $forOpponent, $clock);
+        $this->updateStat($game, $event, $type, $playerId, $forOpponent, $clock, $foulKind);
     }
 
     private function updateSubstitution(GameEvent $event, StatType $type, string $clock): void
@@ -71,6 +73,7 @@ class UpdateGameEventType
             'player_id' => null,
             'outgoing_player_id' => null,
             'home_away' => $game->sideFor($forOpponent),
+            'foul_kind' => null,
             'clock' => $clock,
             'court_x' => null,
             'court_y' => null,
@@ -84,17 +87,40 @@ class UpdateGameEventType
         ?int $playerId,
         bool $forOpponent,
         string $clock,
+        ?FoulKind $foulKind,
     ): void {
         if (! $event->type->isAssignableStat() || ! $event->type->canSwapTo($type)) {
             throw (new ModelNotFoundException)->setModel(GameEvent::class, [$event->id]);
         }
 
-        if ($forOpponent || $playerId === null) {
+        if ($type !== StatType::Foul) {
+            $foulKind = null;
+        }
+
+        if ($forOpponent) {
             $event->update([
                 'type' => $type,
                 'player_id' => null,
                 'outgoing_player_id' => null,
                 'home_away' => $game->sideFor(true),
+                'foul_kind' => $foulKind,
+                'clock' => $clock,
+            ]);
+
+            return;
+        }
+
+        if ($playerId === null) {
+            if ($type !== StatType::Foul || ! $foulKind?->allowsCoach()) {
+                throw (new ModelNotFoundException)->setModel(GameEvent::class, [$event->id]);
+            }
+
+            $event->update([
+                'type' => $type,
+                'player_id' => null,
+                'outgoing_player_id' => null,
+                'home_away' => $game->home_away,
+                'foul_kind' => $foulKind,
                 'clock' => $clock,
             ]);
 
@@ -108,6 +134,7 @@ class UpdateGameEventType
             'player_id' => $player->id,
             'outgoing_player_id' => null,
             'home_away' => $game->home_away,
+            'foul_kind' => $foulKind,
             'clock' => $clock,
         ]);
     }

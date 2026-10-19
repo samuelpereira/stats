@@ -133,6 +133,7 @@
                                 <th class="px-2 py-2 text-center font-medium">{{ __('Min') }}</th>
                                 <th class="px-2 py-2 text-center font-medium">{{ __('Pts') }}</th>
                                 <th class="px-2 py-2 text-center font-medium">{{ __('PF') }}</th>
+                                <th class="px-2 py-2 text-center font-medium">{{ __('TF') }}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -145,10 +146,11 @@
                                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['minutes'] }}</td>
                                     <td class="px-2 py-2 text-center font-semibold tabular-nums">{{ $player['points'] }}</td>
                                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['fouls'] }}</td>
+                                    <td class="px-2 py-2 text-center tabular-nums">{{ $player['technicalFouls'] }}</td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="4" class="px-3 py-3 text-center text-zinc-500">—</td>
+                                    <td colspan="5" class="px-3 py-3 text-center text-zinc-500">—</td>
                                 </tr>
                             @endforelse
                         </tbody>
@@ -162,6 +164,7 @@
                                 <th class="px-2 py-2 text-center font-medium">{{ __('Min') }}</th>
                                 <th class="px-2 py-2 text-center font-medium">{{ __('Pts') }}</th>
                                 <th class="px-2 py-2 text-center font-medium">{{ __('PF') }}</th>
+                                <th class="px-2 py-2 text-center font-medium">{{ __('TF') }}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -174,10 +177,11 @@
                                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['minutes'] }}</td>
                                     <td class="px-2 py-2 text-center font-semibold tabular-nums">{{ $player['points'] }}</td>
                                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['fouls'] }}</td>
+                                    <td class="px-2 py-2 text-center tabular-nums">{{ $player['technicalFouls'] }}</td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="4" class="px-3 py-3 text-center text-zinc-500">—</td>
+                                    <td colspan="5" class="px-3 py-3 text-center text-zinc-500">—</td>
                                 </tr>
                             @endforelse
                         </tbody>

@@ -105,6 +105,7 @@ function createCollectQueue() {
         sendingId: null,
         finishWhenEmpty: false,
         pendingType: null,
+        pendingFoulKind: null,
         choosingPlayer: false,
         choosingShot: false,
         shotError: false,
@@ -120,6 +121,7 @@ function createCollectQueue() {
         editingType: null,
         editingPlayerId: null,
         editingForOpponent: false,
+        editingFoulKind: null,
         editingEventClock: null,
 
         bind(wire) {
@@ -542,7 +544,35 @@ function createCollectQueue() {
 
             this.substituting = false;
             this.pendingType = this.pendingType === type ? null : type;
+            this.pendingFoulKind = null;
             this.choosingPlayer = this.pendingType !== null;
+        },
+
+        setFoulKind(kind) {
+            if (this.pendingType !== 'foul') {
+                return;
+            }
+
+            this.pendingFoulKind = kind || null;
+        },
+
+        foulKindAllowsCoach() {
+            const kind = this.pendingFoulKind;
+
+            if (! kind) {
+                return false;
+            }
+
+            return (this.baseline?.foulKinds ?? []).some((option) => option.value === kind && option.allowsCoach);
+        },
+
+        foulKindLabel(kind) {
+            if (! kind) {
+                return this.baseline?.labels?.foul ?? 'foul';
+            }
+
+            return (this.baseline?.foulKinds ?? []).find((option) => option.value === kind)?.logLabel
+                ?? kind;
         },
 
         courtPlayers() {
@@ -627,6 +657,7 @@ function createCollectQueue() {
                 type: this.pendingType,
                 playerId,
                 forOpponent: false,
+                foulKind: this.pendingType === 'foul' ? this.pendingFoulKind : null,
                 quarter: this.local.quarter,
                 clock: this.clock(),
                 courtX: null,
@@ -650,6 +681,25 @@ function createCollectQueue() {
                 type: this.pendingType,
                 playerId: null,
                 forOpponent: true,
+                foulKind: this.pendingType === 'foul' ? this.pendingFoulKind : null,
+                quarter: this.local.quarter,
+                clock: this.clock(),
+                courtX: null,
+                courtY: null,
+            });
+            this.closePicker();
+        },
+
+        async recordCoach() {
+            if (this.pendingType !== 'foul' || ! this.foulKindAllowsCoach()) {
+                return;
+            }
+
+            await this.enqueue('record', {
+                type: 'foul',
+                playerId: null,
+                forOpponent: false,
+                foulKind: this.pendingFoulKind,
                 quarter: this.local.quarter,
                 clock: this.clock(),
                 courtX: null,
@@ -671,6 +721,7 @@ function createCollectQueue() {
                 type: this.pendingType,
                 playerId: this.shotForOpponent ? null : this.shotPlayerId,
                 forOpponent: this.shotForOpponent,
+                foulKind: null,
                 quarter: this.local.quarter,
                 clock: this.clock(),
                 courtX,
@@ -683,6 +734,7 @@ function createCollectQueue() {
 
         closePicker() {
             this.pendingType = null;
+            this.pendingFoulKind = null;
             this.choosingPlayer = false;
             this.choosingShot = false;
             this.shotPlayerId = null;
@@ -860,6 +912,7 @@ function createCollectQueue() {
                 playerId: this.wire.editingForOpponent ? null : this.wire.editingPlayerId,
                 outgoingPlayerId: this.wire.editingOutgoingPlayerId,
                 forOpponent: Boolean(this.wire.editingForOpponent),
+                foulKind: type === 'foul' ? (this.wire.editingFoulKind ?? null) : null,
                 clock: this.wire.editingEventClock,
             });
             this.wire.cancelEditingAction();
@@ -888,7 +941,24 @@ function createCollectQueue() {
             this.editingType = item.payload.type;
             this.editingPlayerId = item.payload.playerId;
             this.editingForOpponent = Boolean(item.payload.forOpponent);
+            this.editingFoulKind = item.payload.foulKind ?? null;
             this.editingEventClock = item.payload.clock;
+        },
+
+        setEditingFoulKind(kind) {
+            if (this.editingType !== 'foul') {
+                return;
+            }
+
+            this.editingFoulKind = kind || null;
+
+            if (this.editingFoulKind !== 'technical' && this.editingPlayerId === null && ! this.editingForOpponent) {
+                this.editingPlayerId = null;
+            }
+        },
+
+        editingFoulAllowsCoach() {
+            return this.editingType === 'foul' && this.editingFoulKind === 'technical';
         },
 
         async savePendingEdit() {
@@ -914,15 +984,26 @@ function createCollectQueue() {
                 return;
             }
 
+            const forCoach = type === 'foul'
+                && this.editingFoulKind === 'technical'
+                && ! this.editingForOpponent
+                && (this.editingPlayerId === null || this.editingPlayerId === undefined);
+
+            if (type !== 'timeout' && type !== 'substitution' && ! this.editingForOpponent && ! forCoach && ! this.editingPlayerId) {
+                return;
+            }
+
             item.payload = {
                 ...item.payload,
                 type,
-                playerId: this.editingForOpponent ? null : this.editingPlayerId,
+                playerId: this.editingForOpponent || forCoach ? null : this.editingPlayerId,
                 forOpponent: this.editingForOpponent,
+                foulKind: type === 'foul' ? this.editingFoulKind : null,
                 clock: this.editingEventClock ?? item.payload.clock,
             };
             await putItem(this.database, item);
             this.editingPendingId = null;
+            this.editingFoulKind = null;
             this.replay();
         },
 
@@ -943,16 +1024,28 @@ function createCollectQueue() {
 
         recordLine(item) {
             const ours = ! item.payload.forOpponent;
-            const player = ours
-                ? (this.baseline.roster.find((rosterPlayer) => rosterPlayer.id === Number(item.payload.playerId))?.label ?? '')
-                : this.baseline.opponentName;
+            let player = this.baseline.opponentName;
+
+            if (ours) {
+                if (item.payload.playerId) {
+                    player = this.baseline.roster.find((rosterPlayer) => rosterPlayer.id === Number(item.payload.playerId))?.label ?? '';
+                } else if (item.payload.type === 'foul') {
+                    player = this.baseline.coachBenchLabel ?? 'Coach / Bench';
+                } else {
+                    player = this.baseline.teamName ?? '';
+                }
+            }
+
+            const label = item.payload.type === 'foul'
+                ? this.foulKindLabel(item.payload.foulKind ?? null)
+                : (this.baseline.labels[item.payload.type] ?? item.payload.type);
 
             return {
                 id: item.id,
                 clock: item.payload.clock,
                 player,
                 playerLines: [],
-                label: this.baseline.labels[item.payload.type] ?? item.payload.type,
+                label,
                 side: ours ? this.baseline.homeAway : oppositeSide(this.baseline.homeAway),
                 editable: true,
                 missed: String(item.payload.type).includes('missed'),

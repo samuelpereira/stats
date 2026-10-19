@@ -188,6 +188,7 @@ class Team extends Model
             'steals',
             'blocks',
             'fouls',
+            'technicalFouls',
             'plusMinus',
         ];
 
@@ -239,7 +240,8 @@ class Team extends Model
                     || $line['turnovers'] > 0
                     || $line['steals'] > 0
                     || $line['blocks'] > 0
-                    || $line['fouls'] > 0;
+                    || $line['fouls'] > 0
+                    || $line['technicalFouls'] > 0;
 
                 if ($appeared) {
                     $gamesPlayed[$playerId]++;

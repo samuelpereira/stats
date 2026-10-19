@@ -30,6 +30,7 @@
                 <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('TO') }}</th>
                 <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('+/-') }}</th>
                 <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('PF') }}</th>
+                <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('TF') }}</th>
                 <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('Min') }}</th>
             </tr>
         </thead>
@@ -59,6 +60,7 @@
                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['turnovers'] }}</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['plusMinus'] > 0 ? '+'.$player['plusMinus'] : $player['plusMinus'] }}</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['fouls'] }}</td>
+                    <td class="px-2 py-2 text-center tabular-nums">{{ $player['technicalFouls'] }}</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['minutes'] }}</td>
                 </tr>
             @endforeach
@@ -83,6 +85,7 @@
                 <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['team']['turnovers'] }}</td>
                 <td class="px-2 py-2 text-center text-zinc-400">—</td>
                 <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['team']['fouls'] }}</td>
+                <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['team']['technicalFouls'] }}</td>
                 <td class="px-2 py-2 text-center text-zinc-400">—</td>
             </tr>
             @if ($opponentName !== null)
@@ -107,6 +110,7 @@
                     <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['opponent']['turnovers'] }}</td>
                     <td class="px-2 py-2 text-center text-zinc-400">—</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['opponent']['fouls'] }}</td>
+                    <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['opponent']['technicalFouls'] }}</td>
                     <td class="px-2 py-2 text-center text-zinc-400">—</td>
                 </tr>
             @endif
