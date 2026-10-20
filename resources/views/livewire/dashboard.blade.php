@@ -105,7 +105,7 @@
         <div class="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-8 text-center">
             <p class="text-sm text-zinc-600">{{ __('No games scheduled yet for the current season.') }}</p>
             <a href="{{ route('statistics.index') }}" wire:navigate class="mt-3 inline-flex text-sm font-medium text-zinc-900 hover:underline">
-                {{ __('Statistics') }}
+                {{ __('Games') }}
             </a>
         </div>
     @endif

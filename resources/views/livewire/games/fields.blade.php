@@ -8,7 +8,20 @@
         @endforeach
     </flux:select>
 
-    <flux:input wire:model="fpbId" :label="__('FPB ID')" type="text" />
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-end">
+        <div class="min-w-0 flex-1">
+            <flux:input wire:model="fpbId" :label="__('FPB ID')" type="text" />
+        </div>
+        <flux:button
+            type="button"
+            wire:click="fetchFromFpb"
+            wire:loading.attr="disabled"
+            wire:target="fetchFromFpb"
+        >
+            <span wire:loading.remove wire:target="fetchFromFpb">{{ __('Fetch from FPB') }}</span>
+            <span wire:loading wire:target="fetchFromFpb">{{ __('Importing…') }}</span>
+        </flux:button>
+    </div>
 
     <flux:input wire:model="opponent" :label="__('Opponent')" type="text" required />
 

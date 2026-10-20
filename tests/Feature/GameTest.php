@@ -9,10 +9,13 @@ use App\Livewire\Games\Index as GameIndex;
 use App\Livewire\Teams\Index as TeamIndex;
 use App\Models\Club;
 use App\Models\Game;
+use App\Models\GameEvent;
+use App\Models\Player;
 use App\Models\Season;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -126,6 +129,67 @@ test('an administrator records the score of a game', function () {
         ->and($game->away_points)->toBe(71)
         ->and($game->status)->toBe(GameStatus::Played)
         ->and($game->score())->toBe('78–71');
+});
+
+test('create game can load details from an fpb id', function () {
+    Http::fake([
+        'https://www.fpb.pt/ficha-de-jogo?internalID=424242' => Http::response(<<<'HTML'
+<title>ADC North vs. Metro United | CN1</title>
+<section class="match-highlights">
+<div class="match-wrapper">
+<p class="phase">Jornada 4</p>
+<p class="date">19 OUT 2026</p>
+<div class="match-inner-wrapper">
+<div class="team home">
+<p class="bigName">ADC North</p>
+<img alt="Home Team Logo" src="https://logos.test/home.png">
+</div>
+<div class="points">
+<span>66</span><div class="dash"></div><span>71</span>
+</div>
+<div class="team away">
+<img alt="Away Team Logo" src="https://logos.test/away.png">
+<p class="bigName">Metro United</p>
+</div>
+</div>
+<p class="location"><a href="/recinto/1">Pavilhão Norte</a></p>
+</div>
+</section>
+HTML),
+        'https://logos.test/away.png' => Http::response('logo'),
+    ]);
+
+    $club = Club::factory()->create();
+    $access = User::factory()->clubAccessFor($club)->create();
+    $team = Team::factory()->create([
+        'club_id' => $club->id,
+        'name' => 'ADC North',
+    ]);
+
+    Livewire::actingAs($access)
+        ->test(CreateGame::class)
+        ->set('teamId', (string) $team->id)
+        ->set('fpbId', '424242')
+        ->call('fetchFromFpb')
+        ->assertHasNoErrors()
+        ->assertSet('opponent', 'Metro United')
+        ->assertSet('homeAway', HomeAway::Home->value)
+        ->assertSet('place', 'Pavilhão Norte')
+        ->assertSet('competition', 'CN1')
+        ->assertSet('journey', 'Jornada 4')
+        ->assertSet('homePoints', '66')
+        ->assertSet('awayPoints', '71')
+        ->assertSet('status', GameStatus::Played->value)
+        ->assertSet('dateTime', '2026-10-19T00:00')
+        ->call('save')
+        ->assertHasNoErrors()
+        ->assertRedirect(route('games.index'));
+
+    $game = Game::query()->where('fpb_id', '424242')->first();
+
+    expect($game)->not->toBeNull()
+        ->and($game->opponent)->toBe('Metro United')
+        ->and($game->opponent_photo)->not->toBeNull();
 });
 
 test('a repeated fpb id is rejected', function () {
@@ -263,6 +327,37 @@ test('a game is listed and edited by its uuid', function () {
     $this->actingAs($administrator)
         ->get(route('games.edit', $game->id))
         ->assertNotFound();
+});
+
+test('the games list shows collect and statistics actions for collectors', function () {
+    $club = Club::factory()->create();
+    $access = User::factory()->clubAccessFor($club)->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $scheduled = Game::factory()->create([
+        'team_id' => $team->id,
+        'status' => GameStatus::Scheduled,
+        'opponent' => 'Scheduled Side',
+    ]);
+    $played = Game::factory()->create([
+        'team_id' => $team->id,
+        'status' => GameStatus::Played,
+        'opponent' => 'Played Side',
+        'home_points' => 70,
+        'away_points' => 65,
+    ]);
+    GameEvent::factory()->create([
+        'game_id' => $played->id,
+        'player_id' => Player::factory()->create(['team_id' => $team->id])->id,
+    ]);
+
+    Livewire::actingAs($access)
+        ->test(GameIndex::class)
+        ->assertSee(route('statistics.record', $scheduled), false)
+        ->assertSee(route('statistics.record', $played), false)
+        ->assertSee(route('statistics.show', ['game' => $played, 'from' => 'games']), false)
+        ->assertDontSee(route('statistics.show', ['game' => $scheduled, 'from' => 'games']), false)
+        ->assertSee(route('games.edit', $scheduled), false)
+        ->assertSee("confirmDelete('{$scheduled->uuid}')", false);
 });
 
 test('an administrator cannot delete a team that still has games', function () {

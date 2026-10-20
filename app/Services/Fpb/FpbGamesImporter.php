@@ -24,8 +24,10 @@ class FpbGamesImporter
     /**
      * @return array{created:int, updated:int, deleted:int, total:int}
      */
-    public function import(Team $team, bool $prune = true): array
+    public function import(Team $team, ?bool $prune = null): array
     {
+        $prune ??= (bool) config('fpb.prune_missing');
+
         if (! $team->fpb_url) {
             throw new RuntimeException(__('Team ":name" has no FPB link.', ['name' => $team->name]));
         }
@@ -125,8 +127,10 @@ class FpbGamesImporter
     /**
      * @return array{created:int, updated:int, deleted:int, total:int}
      */
-    public function importPlayers(Team $team, bool $prune = true): array
+    public function importPlayers(Team $team, ?bool $prune = null): array
     {
+        $prune ??= (bool) config('fpb.prune_missing');
+
         if (! $team->fpb_url) {
             throw new RuntimeException(__('Team ":name" has no FPB link.', ['name' => $team->name]));
         }
@@ -200,6 +204,172 @@ class FpbGamesImporter
             'updated' => $updated,
             'deleted' => $deleted,
             'total' => count($seenIds),
+        ];
+    }
+
+    /**
+     * Fetch a single game sheet and map it for the given team.
+     *
+     * @return array{
+     *     opponent: string,
+     *     home_away: HomeAway,
+     *     date_time: CarbonImmutable,
+     *     place: string|null,
+     *     competition: string|null,
+     *     journey: string|null,
+     *     home_points: int|null,
+     *     away_points: int|null,
+     *     status: GameStatus,
+     *     opponent_logo: string|null,
+     * }
+     */
+    public function fetchGameForTeam(Team $team, string $fpbId): array
+    {
+        $fpbId = trim($fpbId);
+
+        if ($fpbId === '' || preg_match('/^\d+$/', $fpbId) !== 1) {
+            throw new RuntimeException(__('The FPB ID is invalid.'));
+        }
+
+        $html = $this->fetch($this->gameSheetUrl($fpbId));
+        $sheet = $this->parseGameSheet($html);
+
+        if ($sheet === null) {
+            throw new RuntimeException(__('No game was found for FPB ID :id.', ['id' => $fpbId]));
+        }
+
+        $team->loadMissing('club');
+
+        $isHome = $this->nameMatchesTeam($sheet['home'], $team);
+        $isAway = $this->nameMatchesTeam($sheet['away'], $team);
+
+        if ($isHome === $isAway) {
+            throw new RuntimeException(__('Could not match team ":name" to either side of the FPB game.', ['name' => $team->name]));
+        }
+
+        $hasScore = $sheet['home_points'] !== null && $sheet['away_points'] !== null;
+
+        return [
+            'opponent' => $isHome ? $sheet['away'] : $sheet['home'],
+            'home_away' => $isHome ? HomeAway::Home : HomeAway::Away,
+            'date_time' => $sheet['date_time'],
+            'place' => $sheet['place'],
+            'competition' => $sheet['competition'],
+            'journey' => $sheet['journey'],
+            'home_points' => $sheet['home_points'],
+            'away_points' => $sheet['away_points'],
+            'status' => $hasScore ? GameStatus::Played : GameStatus::Scheduled,
+            'opponent_logo' => $isHome ? $sheet['away_logo'] : $sheet['home_logo'],
+        ];
+    }
+
+    public function attachOpponentLogo(Game $game, ?string $logoUrl): void
+    {
+        if ($logoUrl === null || $logoUrl === '') {
+            return;
+        }
+
+        $this->storeOpponentPhoto($game, $logoUrl);
+
+        if ($game->isDirty('opponent_photo')) {
+            $game->save();
+        }
+    }
+
+    /**
+     * @return array{
+     *     home: string,
+     *     away: string,
+     *     place: string|null,
+     *     competition: string|null,
+     *     journey: string|null,
+     *     home_points: int|null,
+     *     away_points: int|null,
+     *     home_logo: string|null,
+     *     away_logo: string|null,
+     *     date_time: CarbonImmutable,
+     * }|null
+     */
+    public function parseGameSheet(string $html): ?array
+    {
+        if (! preg_match('/<div class="match-wrapper">(.*?)<\/section>/su', $html, $wrapper)) {
+            return null;
+        }
+
+        $block = $wrapper[1];
+
+        if (! preg_match('/<div class="team home">(.*?)<\/div>\s*<div class="points">/su', $block, $homeBlock)) {
+            return null;
+        }
+
+        if (! preg_match('/<div class="team away">(.*?)<\/div>\s*<\/div>/su', $block, $awayBlock)) {
+            return null;
+        }
+
+        if (! preg_match('/class="bigName"[^>]*>\s*(.*?)\s*<\/p>/su', $homeBlock[1], $homeName)) {
+            return null;
+        }
+
+        if (! preg_match('/class="bigName"[^>]*>\s*(.*?)\s*<\/p>/su', $awayBlock[1], $awayName)) {
+            return null;
+        }
+
+        preg_match('/class="date">\s*(.*?)\s*<\/p>/su', $block, $date);
+        preg_match('/class="phase">\s*(.*?)\s*<\/p>/su', $block, $phase);
+        preg_match('/class="location">.*?<a[^>]*>\s*(.*?)\s*<\/a>/su', $block, $location);
+        preg_match('/<div class="points">(.*?)<\/div>\s*<div class="team away">/su', $block, $pointsBlock);
+        preg_match('/<title>\s*(.*?)\s*<\/title>/su', $html, $title);
+
+        $homeLogo = null;
+        $awayLogo = null;
+
+        if (preg_match('/<img[^>]*\bsrc=(?:"([^"]+)"|([^\s>]+))/su', $homeBlock[1], $homeImg)) {
+            $homeLogo = $this->absoluteFpbUrl($homeImg[1] !== '' ? $homeImg[1] : $homeImg[2]);
+        }
+
+        if (preg_match('/<img[^>]*\bsrc=(?:"([^"]+)"|([^\s>]+))/su', $awayBlock[1], $awayImg)) {
+            $awayLogo = $this->absoluteFpbUrl($awayImg[1] !== '' ? $awayImg[1] : $awayImg[2]);
+        }
+
+        $homePoints = null;
+        $awayPoints = null;
+
+        if (isset($pointsBlock[1]) && preg_match_all('/<span[^>]*>\s*(\d+)\s*<\/span>/su', $pointsBlock[1], $scores) && count($scores[1]) >= 2) {
+            $homePoints = (int) $scores[1][0];
+            $awayPoints = (int) $scores[1][1];
+        }
+
+        $competition = null;
+
+        if (isset($title[1]) && str_contains($title[1], '|')) {
+            $competition = $this->clean((string) Str::afterLast($title[1], '|'));
+        }
+
+        $time = null;
+
+        if (! isset($date[1]) || ! preg_match('/(\d{1,2})\s+([A-Z]{3})\s+(20\d\d)/u', $this->clean($date[1]), $dateParts)) {
+            return null;
+        }
+
+        $day = (int) $dateParts[1];
+        $month = self::MESES[$dateParts[2]] ?? null;
+        $year = (int) $dateParts[3];
+
+        if ($month === null) {
+            return null;
+        }
+
+        return [
+            'home' => $this->clean($homeName[1]),
+            'away' => $this->clean($awayName[1]),
+            'place' => isset($location[1]) ? $this->clean($location[1]) : null,
+            'competition' => $competition !== null && $competition !== '' ? $competition : null,
+            'journey' => isset($phase[1]) ? $this->clean($phase[1]) : null,
+            'home_points' => $homePoints,
+            'away_points' => $awayPoints,
+            'home_logo' => $homeLogo,
+            'away_logo' => $awayLogo,
+            'date_time' => $this->resolveFixtureDateTime($year, $month, $day, $time, null),
         ];
     }
 
@@ -511,8 +681,58 @@ class FpbGamesImporter
         }
     }
 
+    protected function gameSheetUrl(string $fpbId): string
+    {
+        $template = (string) config('fpb.game_sheet_url');
+
+        if (str_contains($template, '{id}')) {
+            return str_replace('{id}', $fpbId, $template);
+        }
+
+        return rtrim($template, '=').'='.$fpbId;
+    }
+
     protected function clean(string $value): string
     {
         return trim(preg_replace('/\s+/u', ' ', $value) ?? '');
+    }
+
+    protected function nameMatchesTeam(string $fpbName, Team $team): bool
+    {
+        $normalized = $this->normalizeName($fpbName);
+
+        if ($normalized === '') {
+            return false;
+        }
+
+        foreach ([$team->name, $team->club->name] as $candidate) {
+            if ($candidate === '') {
+                continue;
+            }
+
+            $normalizedCandidate = $this->normalizeName($candidate);
+
+            if ($normalizedCandidate === '') {
+                continue;
+            }
+
+            if (
+                $normalized === $normalizedCandidate
+                || str_contains($normalized, $normalizedCandidate)
+                || str_contains($normalizedCandidate, $normalized)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function normalizeName(string $value): string
+    {
+        $value = Str::lower($this->clean($value));
+        $value = Str::ascii($value);
+
+        return preg_replace('/[^a-z0-9]+/u', '', $value) ?? '';
     }
 }

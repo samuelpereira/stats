@@ -7,8 +7,10 @@ use App\Enums\GameStatus;
 use App\Enums\HomeAway;
 use App\Enums\PermissionName;
 use App\Livewire\Concerns\InteractsWithAuthenticatedUser;
+use App\Livewire\Games\Concerns\FetchesFpbGame;
 use App\Models\Game;
 use App\Models\Team;
+use App\Services\Fpb\FpbGamesImporter;
 use Carbon\CarbonImmutable;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Collection;
@@ -20,6 +22,7 @@ use Livewire\Component;
 #[Title('New game')]
 class Create extends Component
 {
+    use FetchesFpbGame;
     use InteractsWithAuthenticatedUser;
 
     public string $teamId = '';
@@ -49,13 +52,13 @@ class Create extends Component
         $this->authorize('create', Game::class);
     }
 
-    public function save(CreateGameAction $createGame): void
+    public function save(CreateGameAction $createGame, FpbGamesImporter $importer): void
     {
         $this->authorize('create', Game::class);
 
         $validated = $this->validate($this->rules());
 
-        $createGame->handle(
+        $game = $createGame->handle(
             $this->actor(),
             (int) $validated['teamId'],
             $validated['fpbId'] ?? null,
@@ -70,9 +73,16 @@ class Create extends Component
             GameStatus::from($validated['status']),
         );
 
+        $this->attachFetchedOpponentLogo($game, $importer);
+
         Flux::toast(variant: 'success', text: __('Game created.'));
 
         $this->redirect(route('games.index'), navigate: true);
+    }
+
+    protected function authorizeFormAccess(): void
+    {
+        $this->authorize('create', Game::class);
     }
 
     /**

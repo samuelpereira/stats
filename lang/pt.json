@@ -802,5 +802,10 @@
     "Disqualifying": "Desqualificante",
     "Personal foul": "Falta pessoal",
     "Special foul": "Falta especial",
-    "Coach / Bench": "Treinador / Banco"
+    "Coach / Bench": "Treinador / Banco",
+    "Fetch from FPB": "Ir buscar da FPB",
+    "FPB game details loaded.": "Dados do jogo carregados da FPB.",
+    "The FPB ID is invalid.": "O ID FPB é inválido.",
+    "No game was found for FPB ID :id.": "Não foi encontrado jogo para o ID FPB :id.",
+    "Could not match team \":name\" to either side of the FPB game.": "Não foi possível associar a equipa \":name\" a nenhum dos lados do jogo FPB."
 }

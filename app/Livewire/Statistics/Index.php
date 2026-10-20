@@ -17,7 +17,7 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
-#[Title('Statistics')]
+#[Title('Games')]
 class Index extends Component
 {
     use InteractsWithAuthenticatedUser, PaginatesListings;

@@ -36,6 +36,47 @@ HTML;
         ->and($fixtures[0]['date_time']->format('Y-m-d H:i'))->toBe('2025-10-15 20:30');
 });
 
+test('fpb parse game sheet extracts match details', function () {
+    $html = <<<'HTML'
+<title>União da Madeira vs. Académico FC | VI Campeonato da Liga Feminina</title>
+<section class="match-highlights">
+<div class="match-wrapper">
+<p class="phase">Fase regular 13</p>
+<p class="date">11 JAN 2004</p>
+<div class="match-inner-wrapper">
+<div class="team home">
+<p class="bigName" style="color:#E32C23">União da Madeira </p>
+<img alt="Home Team Logo" src=https://logos.test/home.png>
+</div>
+<div class="points">
+<span style="color:#E32C23">61</span>
+<div class="dash"></div><span style="color:#ACABAB">72</span>
+</div>
+<div class="team away">
+<img alt="Away Team Logo" src="https://logos.test/away.png">
+<p class="bigName" style="color:#ACABAB">Académico FC </p>
+</div>
+</div>
+<p class="location"><a href="/recinto/9438"> Pavilhão Ponta do Sol </a></p>
+</div>
+</section>
+HTML;
+
+    $sheet = app(FpbGamesImporter::class)->parseGameSheet($html);
+
+    expect($sheet)->not->toBeNull()
+        ->and($sheet['home'])->toBe('União da Madeira')
+        ->and($sheet['away'])->toBe('Académico FC')
+        ->and($sheet['home_points'])->toBe(61)
+        ->and($sheet['away_points'])->toBe(72)
+        ->and($sheet['place'])->toBe('Pavilhão Ponta do Sol')
+        ->and($sheet['competition'])->toBe('VI Campeonato da Liga Feminina')
+        ->and($sheet['journey'])->toBe('Fase regular 13')
+        ->and($sheet['home_logo'])->toBe('https://logos.test/home.png')
+        ->and($sheet['away_logo'])->toBe('https://logos.test/away.png')
+        ->and($sheet['date_time']->format('Y-m-d'))->toBe('2004-01-11');
+});
+
 test('fpb parse players extracts roster from team page html', function () {
     $html = <<<'HTML'
 <div class="roster__player">

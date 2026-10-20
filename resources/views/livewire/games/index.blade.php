@@ -41,16 +41,16 @@
                     <x-listing.cell :label="__('Date and time')">{{ $game->date_time->format('d/m/Y H:i') }}</x-listing.cell>
                     <x-listing.cell :label="__('At home')">
                         @if ($game->home_away === \App\Enums\HomeAway::Home)
-                            <span class="font-bold text-zinc-900">{{ $game->team->name }}</span>
+                            <x-games.side :name="$game->team->name" :photo-url="$game->team->photo_url" emphasis />
                         @else
-                            {{ $game->opponent }}
+                            <x-games.side :name="$game->opponent" :photo-url="$game->opponent_photo_url" />
                         @endif
                     </x-listing.cell>
                     <x-listing.cell :label="__('Away')">
                         @if ($game->home_away === \App\Enums\HomeAway::Away)
-                            <span class="font-bold text-zinc-900">{{ $game->team->name }}</span>
+                            <x-games.side :name="$game->team->name" :photo-url="$game->team->photo_url" emphasis />
                         @else
-                            {{ $game->opponent }}
+                            <x-games.side :name="$game->opponent" :photo-url="$game->opponent_photo_url" />
                         @endif
                     </x-listing.cell>
                     <x-listing.cell :label="__('Score')">{{ $game->score() ?? '—' }}</x-listing.cell>
@@ -60,11 +60,26 @@
                         </span>
                     </x-listing.cell>
                     <x-listing.cell actions>
-                        <x-listing.actions :edit-href="route('games.edit', $game)">
-                            <x-slot:delete>
-                                <x-listing.delete-button :record-id="$game->uuid" />
-                            </x-slot:delete>
-                        </x-listing.actions>
+                        <div class="flex items-center justify-end gap-2">
+                            <x-statistics.game-actions :game="$game" from="games" />
+                            <flux:dropdown position="bottom" align="end">
+                                <flux:button variant="ghost" size="sm" icon="ellipsis-vertical" :aria-label="__('Actions')" />
+                                <flux:menu>
+                                    <flux:menu.item :href="route('games.edit', $game)" icon="pencil" wire:navigate>
+                                        {{ __('Edit') }}
+                                    </flux:menu.item>
+                                    <flux:menu.item
+                                        as="button"
+                                        type="button"
+                                        wire:click="confirmDelete('{{ $game->uuid }}')"
+                                        icon="trash"
+                                        variant="danger"
+                                    >
+                                        {{ __('Delete') }}
+                                    </flux:menu.item>
+                                </flux:menu>
+                            </flux:dropdown>
+                        </div>
                     </x-listing.cell>
                 </tr>
             @empty

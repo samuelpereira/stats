@@ -43,6 +43,7 @@ class Show extends Component
     {
         return match ($from) {
             'dashboard' => route('dashboard'),
+            'games' => route('games.index'),
             'statistics' => route('statistics.index'),
             'record' => route('statistics.record', $this->game),
             default => route('statistics.index'),

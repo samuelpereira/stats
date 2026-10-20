@@ -90,7 +90,10 @@ class Index extends Component
     {
         $actor = $this->actor();
 
-        $query = Game::query()->with(['team.club', 'team.season'])->orderByDesc('date_time');
+        $query = Game::query()
+            ->with(['team.club', 'team.season'])
+            ->withExists('events')
+            ->orderByDesc('date_time');
 
         if (! $actor->can(PermissionName::CreateClubs->value)) {
             $query->whereHas('team', fn (Builder $teamQuery) => $teamQuery->where('club_id', $actor->club_id));

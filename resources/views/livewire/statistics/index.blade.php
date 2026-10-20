@@ -1,6 +1,6 @@
 <div class="-m-6 flex min-h-dvh flex-col gap-6 bg-white p-6 text-zinc-900 lg:-m-8 lg:p-8">
     <div>
-        <h1 class="text-2xl font-semibold tracking-tight">{{ __('Statistics') }}</h1>
+        <h1 class="text-2xl font-semibold tracking-tight">{{ __('Games') }}</h1>
         <p class="mt-1 text-sm text-zinc-500">{{ __('Games of your club') }}</p>
     </div>
 
@@ -40,16 +40,16 @@
                         <x-listing.cell :label="__('Date and time')">{{ $game->date_time->format('d/m/Y H:i') }}</x-listing.cell>
                         <x-listing.cell :label="__('At home')">
                             @if ($game->home_away === \App\Enums\HomeAway::Home)
-                                <span class="font-bold text-zinc-900">{{ $game->team->name }}</span>
+                                <x-games.side :name="$game->team->name" :photo-url="$game->team->photo_url" emphasis />
                             @else
-                                {{ $game->opponent }}
+                                <x-games.side :name="$game->opponent" :photo-url="$game->opponent_photo_url" />
                             @endif
                         </x-listing.cell>
                         <x-listing.cell :label="__('Away')">
                             @if ($game->home_away === \App\Enums\HomeAway::Away)
-                                <span class="font-bold text-zinc-900">{{ $game->team->name }}</span>
+                                <x-games.side :name="$game->team->name" :photo-url="$game->team->photo_url" emphasis />
                             @else
-                                {{ $game->opponent }}
+                                <x-games.side :name="$game->opponent" :photo-url="$game->opponent_photo_url" />
                             @endif
                         </x-listing.cell>
                         <x-listing.cell actions>

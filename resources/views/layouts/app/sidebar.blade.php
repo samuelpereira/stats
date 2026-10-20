@@ -50,9 +50,11 @@
                         </flux:sidebar.item>
                     @endcan
                     @can('collectAny', \App\Models\Game::class)
-                        <flux:sidebar.item icon="clipboard-document-list" :href="route('statistics.index')" :current="request()->routeIs('statistics.*')" wire:navigate>
-                            {{ __('Statistics') }}
-                        </flux:sidebar.item>
+                        @cannot('viewAny', \App\Models\Game::class)
+                            <flux:sidebar.item icon="trophy" :href="route('statistics.index')" :current="request()->routeIs('statistics.*')" wire:navigate>
+                                {{ __('Games') }}
+                            </flux:sidebar.item>
+                        @endcannot
                     @endcan
                 </flux:sidebar.group>
             </flux:sidebar.nav>

@@ -8,8 +8,10 @@ use App\Enums\GameStatus;
 use App\Enums\HomeAway;
 use App\Enums\PermissionName;
 use App\Livewire\Concerns\InteractsWithAuthenticatedUser;
+use App\Livewire\Games\Concerns\FetchesFpbGame;
 use App\Models\Game;
 use App\Models\Team;
+use App\Services\Fpb\FpbGamesImporter;
 use Carbon\CarbonImmutable;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Collection;
@@ -24,6 +26,7 @@ use Livewire\WithFileUploads;
 #[Title('Edit game')]
 class Edit extends Component
 {
+    use FetchesFpbGame;
     use InteractsWithAuthenticatedUser;
     use WithFileUploads;
 
@@ -72,13 +75,13 @@ class Edit extends Component
         $this->status = $game->status->value;
     }
 
-    public function save(UpdateGameAction $updateGame): void
+    public function save(UpdateGameAction $updateGame, FpbGamesImporter $importer): void
     {
         $this->authorize('update', $this->game);
 
         $validated = $this->validate($this->rules());
 
-        $updateGame->handle(
+        $game = $updateGame->handle(
             $this->actor(),
             $this->game,
             (int) $validated['teamId'],
@@ -94,9 +97,16 @@ class Edit extends Component
             GameStatus::from($validated['status']),
         );
 
+        $this->attachFetchedOpponentLogo($game, $importer);
+
         Flux::toast(variant: 'success', text: __('Game updated.'));
 
         $this->redirect(route('games.index'), navigate: true);
+    }
+
+    protected function authorizeFormAccess(): void
+    {
+        $this->authorize('update', $this->game);
     }
 
     public function importLog(ImportGameLog $importGameLog): void

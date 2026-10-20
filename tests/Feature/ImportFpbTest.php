@@ -3,6 +3,7 @@
 use App\Enums\GameStatus;
 use App\Enums\HomeAway;
 use App\Livewire\Teams\Edit as EditTeam;
+use App\Models\Club;
 use App\Models\Game;
 use App\Models\Player;
 use App\Models\Team;
@@ -187,6 +188,84 @@ HTML),
 
     expect($game->fresh()->date_time->format('Y-m-d H:i'))->toBe('2025-10-15 20:30')
         ->and($game->fresh()->home_points)->toBe(80);
+});
+
+test('fpb fetch game for team maps opponent and home away', function () {
+    Http::fake([
+        'https://www.fpb.pt/ficha-de-jogo?internalID=1001' => Http::response(<<<'HTML'
+<title>North City vs. South Valley | CN1</title>
+<section class="match-highlights">
+<div class="match-wrapper">
+<p class="phase">Jornada 2</p>
+<p class="date">04 OUT 2026</p>
+<div class="match-inner-wrapper">
+<div class="team home">
+<p class="bigName">North City</p>
+<img alt="Home Team Logo" src="https://logos.test/home.png">
+</div>
+<div class="points">
+<span>80</span><div class="dash"></div><span>70</span>
+</div>
+<div class="team away">
+<img alt="Away Team Logo" src="https://logos.test/away.png">
+<p class="bigName">South Valley</p>
+</div>
+</div>
+<p class="location"><a href="/recinto/1">Arena</a></p>
+</div>
+</section>
+HTML),
+    ]);
+
+    $club = Club::factory()->create(['name' => 'North Club']);
+    $team = Team::factory()->create([
+        'club_id' => $club->id,
+        'name' => 'North City',
+    ]);
+
+    $sheet = app(FpbGamesImporter::class)->fetchGameForTeam($team, '1001');
+
+    expect($sheet['opponent'])->toBe('South Valley')
+        ->and($sheet['home_away'])->toBe(HomeAway::Home)
+        ->and($sheet['home_points'])->toBe(80)
+        ->and($sheet['away_points'])->toBe(70)
+        ->and($sheet['status'])->toBe(GameStatus::Played)
+        ->and($sheet['competition'])->toBe('CN1')
+        ->and($sheet['journey'])->toBe('Jornada 2')
+        ->and($sheet['opponent_logo'])->toBe('https://logos.test/away.png');
+});
+
+test('fpb games import keeps local fpb games missing from the page unless prune is enabled', function () {
+    Http::fake([
+        'https://fpb.test/equipa' => Http::response(<<<'HTML'
+<h3 class="date">15 OUT 2025</h3>
+<a href="/ficha-de-jogo?internalID=1001">
+<span class="fullName">Test Club Alpha</span>
+<span class="fullName">Test Club Beta</span>
+</a>
+HTML),
+    ]);
+
+    $team = Team::factory()->create([
+        'name' => 'Test Club Alpha',
+        'fpb_url' => 'https://fpb.test/equipa',
+    ]);
+
+    $kept = Game::factory()->for($team)->create(['fpb_id' => '9999']);
+
+    config(['fpb.prune_missing' => false]);
+
+    $withoutPrune = app(FpbGamesImporter::class)->import($team);
+
+    expect($withoutPrune['deleted'])->toBe(0)
+        ->and(Game::query()->whereKey($kept->id)->exists())->toBeTrue();
+
+    config(['fpb.prune_missing' => true]);
+
+    $withPrune = app(FpbGamesImporter::class)->import($team);
+
+    expect($withPrune['deleted'])->toBe(1)
+        ->and(Game::query()->whereKey($kept->id)->exists())->toBeFalse();
 });
 
 test('team edit can trigger fpb imports from livewire', function () {

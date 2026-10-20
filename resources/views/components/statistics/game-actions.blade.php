@@ -11,7 +11,7 @@
             </a>
         @endif
         <a href="{{ route('statistics.record', $game) }}" wire:navigate class="inline-flex size-9 items-center justify-center rounded-lg border border-zinc-300 text-zinc-800 hover:border-zinc-900" aria-label="{{ __('Collect') }}">
-            <flux:icon name="clipboard-document-list" class="size-4" />
+            <flux:icon name="pencil" class="size-4" />
         </a>
     @endcan
 </div>
