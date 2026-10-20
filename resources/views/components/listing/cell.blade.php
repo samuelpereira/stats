@@ -18,4 +18,12 @@
         'text-zinc-600' => ! $primary && ! $actions,
         'sm:text-right' => $actions,
     ]) }}
->{{ $slot }}</td>
+>
+    @if ($actions)
+        {{ $slot }}
+    @elseif ($primary)
+        <div class="min-w-0 max-w-full truncate">{{ $slot }}</div>
+    @else
+        <div class="min-w-0 flex-1 overflow-hidden break-words max-sm:text-end">{{ $slot }}</div>
+    @endif
+</td>

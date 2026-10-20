@@ -1,14 +1,28 @@
 @props([
     'editHref',
+    'deleteRecordId' => null,
 ])
 
-<div class="flex items-center justify-end gap-3">
-    <a href="{{ $editHref }}" wire:navigate class="inline-flex items-center gap-1.5 text-sm text-zinc-600 hover:text-zinc-900">
-        <flux:icon name="pencil" class="size-4" />
-        {{ __('Edit') }}
-    </a>
+<div {{ $attributes->class(['flex items-center justify-end gap-2']) }}>
+    {{ $slot }}
 
-    @isset($delete)
-        {{ $delete }}
-    @endisset
+    <flux:dropdown position="bottom" align="end">
+        <flux:button variant="ghost" size="sm" icon="ellipsis-vertical" :aria-label="__('Actions')" />
+        <flux:menu>
+            <flux:menu.item :href="$editHref" icon="pencil" wire:navigate>
+                {{ __('Edit') }}
+            </flux:menu.item>
+            @if ($deleteRecordId !== null)
+                <flux:menu.item
+                    as="button"
+                    type="button"
+                    wire:click="confirmDelete('{{ $deleteRecordId }}')"
+                    icon="trash"
+                    variant="danger"
+                >
+                    {{ __('Delete') }}
+                </flux:menu.item>
+            @endif
+        </flux:menu>
+    </flux:dropdown>
 </div>

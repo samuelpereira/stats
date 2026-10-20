@@ -37,18 +37,13 @@
                         <x-listing.status :enabled="$team->enabled" />
                     </x-listing.cell>
                     <x-listing.cell actions>
-                        <div class="flex items-center justify-end gap-3">
+                        <x-listing.actions :edit-href="route('teams.edit', $team)" :delete-record-id="$team->uuid">
                             @can('viewSeasonStatistics', $team)
                                 <a href="{{ route('teams.season-statistics', $team) }}" wire:navigate class="inline-flex size-9 items-center justify-center rounded-lg border border-zinc-300 text-zinc-800 hover:border-zinc-900" aria-label="{{ __('Season statistics') }}">
                                     <flux:icon name="chart-bar" class="size-4" />
                                 </a>
                             @endcan
-                            <x-listing.actions :edit-href="route('teams.edit', $team)">
-                                <x-slot:delete>
-                                    <x-listing.delete-button :record-id="$team->uuid" />
-                                </x-slot:delete>
-                            </x-listing.actions>
-                        </div>
+                        </x-listing.actions>
                     </x-listing.cell>
                 </tr>
             @empty

@@ -44,11 +44,7 @@
                         <x-listing.status :enabled="$player->enabled" />
                     </x-listing.cell>
                     <x-listing.cell actions>
-                        <x-listing.actions :edit-href="route('players.edit', $player)">
-                            <x-slot:delete>
-                                <x-listing.delete-button :record-id="$player->uuid" />
-                            </x-slot:delete>
-                        </x-listing.actions>
+                        <x-listing.actions :edit-href="route('players.edit', $player)" :delete-record-id="$player->uuid" />
                     </x-listing.cell>
                 </tr>
             @empty

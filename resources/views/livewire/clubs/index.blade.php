@@ -24,11 +24,7 @@
                         @endif
                     </x-listing.cell>
                     <x-listing.cell actions>
-                        <x-listing.actions :edit-href="route('clubs.edit', $club)">
-                            <x-slot:delete>
-                                <x-listing.delete-button :record-id="$club->id" />
-                            </x-slot:delete>
-                        </x-listing.actions>
+                        <x-listing.actions :edit-href="route('clubs.edit', $club)" :delete-record-id="$club->id" />
                     </x-listing.cell>
                 </tr>
             @empty

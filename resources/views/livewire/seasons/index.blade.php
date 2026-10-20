@@ -30,11 +30,7 @@
                         @endif
                     </x-listing.cell>
                     <x-listing.cell actions>
-                        <x-listing.actions :edit-href="route('seasons.edit', $season)">
-                            <x-slot:delete>
-                                <x-listing.delete-button :record-id="$season->uuid" />
-                            </x-slot:delete>
-                        </x-listing.actions>
+                        <x-listing.actions :edit-href="route('seasons.edit', $season)" :delete-record-id="$season->uuid" />
                     </x-listing.cell>
                 </tr>
             @empty

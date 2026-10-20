@@ -36,11 +36,7 @@
                         <x-listing.status :enabled="$user->enabled" />
                     </x-listing.cell>
                     <x-listing.cell actions>
-                        <x-listing.actions :edit-href="route('users.edit', $user)">
-                            <x-slot:delete>
-                                <x-listing.delete-button :record-id="$user->id" />
-                            </x-slot:delete>
-                        </x-listing.actions>
+                        <x-listing.actions :edit-href="route('users.edit', $user)" :delete-record-id="$user->id" />
                     </x-listing.cell>
                 </tr>
             @empty

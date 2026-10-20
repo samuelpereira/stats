@@ -60,26 +60,9 @@
                         </span>
                     </x-listing.cell>
                     <x-listing.cell actions>
-                        <div class="flex items-center justify-end gap-2">
+                        <x-listing.actions :edit-href="route('games.edit', $game)" :delete-record-id="$game->uuid">
                             <x-statistics.game-actions :game="$game" from="games" />
-                            <flux:dropdown position="bottom" align="end">
-                                <flux:button variant="ghost" size="sm" icon="ellipsis-vertical" :aria-label="__('Actions')" />
-                                <flux:menu>
-                                    <flux:menu.item :href="route('games.edit', $game)" icon="pencil" wire:navigate>
-                                        {{ __('Edit') }}
-                                    </flux:menu.item>
-                                    <flux:menu.item
-                                        as="button"
-                                        type="button"
-                                        wire:click="confirmDelete('{{ $game->uuid }}')"
-                                        icon="trash"
-                                        variant="danger"
-                                    >
-                                        {{ __('Delete') }}
-                                    </flux:menu.item>
-                                </flux:menu>
-                            </flux:dropdown>
-                        </div>
+                        </x-listing.actions>
                     </x-listing.cell>
                 </tr>
             @empty

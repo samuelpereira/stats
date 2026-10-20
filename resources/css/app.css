@@ -67,12 +67,17 @@ select:focus[data-flux-control] {
 
 @layer components {
     @media (max-width: 639px) {
+        .listing-table,
+        .listing-table tbody {
+            @apply block w-full;
+        }
+
         .listing-table thead {
             @apply sr-only;
         }
 
         .listing-table tbody tr:not(.listing-empty) {
-            @apply flex flex-col border-b border-zinc-100 px-4 py-3 last:border-b-0;
+            @apply flex w-full min-w-0 flex-col border-b border-zinc-100 px-4 py-3 last:border-b-0;
         }
 
         .listing-table tbody tr.listing-empty td {
@@ -80,7 +85,7 @@ select:focus[data-flux-control] {
         }
 
         .listing-table tbody tr:not(.listing-empty) td {
-            @apply flex items-center justify-between gap-3 border-0 px-0 py-1.5 text-left;
+            @apply flex w-full min-w-0 items-center justify-between gap-3 border-0 px-0 py-1.5 text-left;
         }
 
         .listing-table td[data-label='primary'] {
@@ -92,7 +97,7 @@ select:focus[data-flux-control] {
         }
 
         .listing-table td[data-label='actions'] {
-            @apply block pt-2;
+            @apply block min-w-0 pt-2;
         }
 
         .listing-table td[data-label='actions']::before {
@@ -101,7 +106,7 @@ select:focus[data-flux-control] {
 
         .listing-table td[data-label]:not([data-label='primary']):not([data-label='actions'])::before {
             content: attr(data-label);
-            @apply shrink-0 pe-3 text-xs font-medium tracking-wide text-zinc-500 uppercase;
+            @apply max-w-[40%] shrink-0 pe-3 text-xs font-medium tracking-wide text-zinc-500 uppercase;
         }
 
         .box-score-table :is(th, td):first-child {

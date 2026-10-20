@@ -24,13 +24,10 @@
                         <x-listing.status :enabled="$administrator->enabled" />
                     </x-listing.cell>
                     <x-listing.cell actions>
-                        <x-listing.actions :edit-href="route('administrators.edit', $administrator)">
-                            @if (auth()->id() !== $administrator->id)
-                                <x-slot:delete>
-                                    <x-listing.delete-button :record-id="$administrator->id" />
-                                </x-slot:delete>
-                            @endif
-                        </x-listing.actions>
+                        <x-listing.actions
+                            :edit-href="route('administrators.edit', $administrator)"
+                            :delete-record-id="auth()->id() !== $administrator->id ? $administrator->id : null"
+                        />
                     </x-listing.cell>
                 </tr>
             @empty
