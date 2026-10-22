@@ -3,6 +3,7 @@
 @endphp
 
 <div data-statistics-record x-init="$store.collectQueue.bind($wire)">
+<div class="hidden" data-collect-baseline>@json($collectQueue)</div>
 @if (! $this->lineupReady)
     <div wire:key="lineup-setup" class="flex h-dvh min-h-0 flex-col bg-zinc-100 text-zinc-900">
         @if ($editingSquad || ! $this->squadReady)
@@ -266,7 +267,6 @@
         </div>
     </div>
 @else
-<div class="hidden" data-collect-baseline>@json($collectQueue)</div>
 <div wire:key="stat-pad" class="flex h-dvh min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900 collect-desktop:hidden">
     @include('livewire.statistics.partials.scoreboard', ['bindGameClock' => true])
 
@@ -1235,16 +1235,18 @@
 @endonce
 @script
     <script>
-        const bindGameClock = () => {
+        const bindCollectStores = () => {
             window.ensureGameClockStore?.();
             window.Alpine.store('gameClock')?.bind($wire);
+            window.Alpine.store('collectQueue')?.bind($wire);
         };
 
-        bindGameClock();
+        bindCollectStores();
 
         document.addEventListener('livewire:navigated', () => {
-            requestAnimationFrame(bindGameClock);
+            requestAnimationFrame(bindCollectStores);
         });
+
     </script>
 @endscript
 <div

@@ -4,7 +4,7 @@
     class="shrink-0 bg-zinc-900 px-3 py-2 text-white lg:px-4 lg:py-3"
     :class="{ '!bg-green-700': $store.gameClock?.running }"
     @if ($bindGameClock ?? false)
-        x-init="$nextTick(() => Alpine.store('gameClock')?.bind($wire))"
+        x-init="$nextTick(() => { Alpine.store('gameClock')?.bind($wire); Alpine.store('collectQueue')?.refreshBaseline(); })"
     @endif
 >
     <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 lg:gap-3">

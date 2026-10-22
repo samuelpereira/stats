@@ -129,10 +129,14 @@ function createCollectQueue() {
             this.refreshBaseline();
         },
 
-        refreshBaseline() {
+        refreshBaseline(retry = true) {
             const baseline = readBaseline();
 
             if (! baseline) {
+                if (retry && document.querySelector('[data-statistics-record]')) {
+                    requestAnimationFrame(() => this.refreshBaseline(false));
+                }
+
                 return;
             }
 
@@ -1143,7 +1147,9 @@ if (window.Alpine) {
 document.addEventListener('livewire:init', () => {
     window.Livewire.hook('commit', ({ succeed }) => {
         succeed(() => {
-            window.Alpine.store('collectQueue')?.refreshBaseline();
+            requestAnimationFrame(() => {
+                window.Alpine.store('collectQueue')?.refreshBaseline();
+            });
         });
     });
 });

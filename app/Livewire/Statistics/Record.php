@@ -266,7 +266,7 @@ class Record extends Component
         $this->squadIds = [];
         $this->starterIds = [];
         $this->editingSquad = false;
-        unset($this->lineup, $this->squad, $this->courtPlayers, $this->benchPlayers, $this->attachedPlayers);
+        unset($this->lineup, $this->squad, $this->squadReady, $this->lineupReady, $this->courtPlayers, $this->benchPlayers, $this->attachedPlayers);
     }
 
     public function toggleStarter(int $playerId): void
@@ -319,7 +319,7 @@ class Record extends Component
         }
 
         $this->starterIds = [];
-        unset($this->lineup, $this->squad, $this->courtPlayers, $this->benchPlayers, $this->attachedPlayers);
+        unset($this->lineup, $this->squad, $this->squadReady, $this->lineupReady, $this->courtPlayers, $this->benchPlayers, $this->attachedPlayers);
     }
 
     public function changeLineup(): void
