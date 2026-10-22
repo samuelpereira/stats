@@ -1,6 +1,6 @@
 <div>
     @if ($shared)
-        <div class="flex h-dvh min-h-0 flex-col bg-zinc-100 text-zinc-900">
+        <div class="admin-surface flex h-dvh min-h-0 flex-col text-zinc-900">
             <header class="shrink-0 border-b border-zinc-200 bg-white">
                 <div class="mx-auto flex w-full max-w-6xl items-center justify-center px-4 py-3">
                     <h1 class="truncate text-center text-sm font-medium sm:text-base">{{ __('Season statistics') }}</h1>
@@ -23,7 +23,7 @@
             </div>
         </div>
     @else
-        <div class="-m-6 flex min-h-dvh flex-col gap-6 bg-white p-6 text-zinc-900 lg:-m-8 lg:p-8">
+        <div class="-m-6 flex min-h-dvh flex-col gap-6 p-6 text-zinc-900 lg:-m-8 lg:p-8">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                     <a href="{{ route('teams.index') }}" wire:navigate class="inline-flex items-center gap-2 text-sm font-medium text-zinc-600 hover:text-zinc-900">

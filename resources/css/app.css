@@ -66,6 +66,34 @@ select:focus[data-flux-control] {
 }
 
 @layer components {
+    .collect-surface,
+    .admin-surface {
+        background-color: #faf6ef;
+        background-image: linear-gradient(
+            to bottom,
+            #efe6d6 0%,
+            #f5eee3 40%,
+            #faf7f1 75%,
+            #fffcf7 100%
+        );
+        background-attachment: fixed;
+    }
+
+    .dark .admin-surface {
+        background-color: var(--color-zinc-800);
+        background-image: none;
+    }
+
+    .admin-sidebar {
+        background-color: #f7f1e6;
+        background-image: linear-gradient(to bottom, #f0e6d6 0%, #f6f0e6 55%, #fbf8f2 100%);
+    }
+
+    .dark .admin-sidebar {
+        background-color: var(--color-zinc-900);
+        background-image: none;
+    }
+
     @media (max-width: 639px) {
         .listing-table,
         .listing-table tbody {

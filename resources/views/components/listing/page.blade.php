@@ -5,7 +5,7 @@
     'actionLabel',
 ])
 
-<div class="-m-6 flex min-h-dvh min-w-0 max-w-full flex-col gap-6 overflow-x-clip bg-white p-6 text-zinc-900 lg:-m-8 lg:p-8">
+<div class="-m-6 flex min-h-dvh min-w-0 max-w-full flex-col gap-6 overflow-x-clip p-6 text-zinc-900 lg:-m-8 lg:p-8">
     <div class="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0">
             <h1 class="text-2xl font-semibold tracking-tight">{{ $title }}</h1>

@@ -1,4 +1,4 @@
-<div class="-m-6 flex min-h-dvh flex-col gap-6 bg-white p-6 text-zinc-900 lg:-m-8 lg:p-8">
+<div class="-m-6 flex min-h-dvh flex-col gap-6 p-6 text-zinc-900 lg:-m-8 lg:p-8">
     <div>
         <h1 class="text-2xl font-semibold tracking-tight">{{ __('Games') }}</h1>
         <p class="mt-1 text-sm text-zinc-500">{{ __('Games of your club') }}</p>

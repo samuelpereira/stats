@@ -5,7 +5,7 @@
 <div data-statistics-record x-init="$store.collectQueue.bind($wire)">
 <div class="hidden" data-collect-baseline>@json($collectQueue)</div>
 @if (! $this->lineupReady)
-    <div wire:key="lineup-setup" class="flex h-dvh min-h-0 flex-col bg-zinc-100 text-zinc-900">
+    <div wire:key="lineup-setup" class="collect-surface flex h-dvh min-h-0 flex-col text-zinc-900">
         @if ($editingSquad || ! $this->squadReady)
             <header class="shrink-0 border-b border-zinc-200 bg-white">
                 <div class="mx-auto grid w-full grid-cols-3 items-center px-4 py-3">
@@ -65,7 +65,7 @@
         </div>
     </div>
 @elseif ($configuringGame)
-    <div wire:key="game-settings" class="flex h-dvh min-h-0 flex-col bg-zinc-100 text-zinc-900">
+    <div wire:key="game-settings" class="collect-surface flex h-dvh min-h-0 flex-col text-zinc-900">
         <header class="shrink-0 border-b border-zinc-200 bg-white">
             <div class="mx-auto grid w-full grid-cols-3 items-center px-4 py-3">
                 <button type="button" wire:click="$set('configuringGame', false)" class="inline-flex items-center gap-2 text-sm font-medium text-zinc-900">
@@ -210,7 +210,7 @@
         </div>
     </div>
 @elseif ($substituting)
-    <div wire:key="substitution" class="flex h-dvh min-h-0 flex-col bg-zinc-100 text-zinc-900">
+    <div wire:key="substitution" class="collect-surface flex h-dvh min-h-0 flex-col text-zinc-900">
         <header class="shrink-0 border-b border-zinc-200 bg-white">
             <div class="mx-auto grid w-full grid-cols-3 items-center px-4 py-3">
                 <button type="button" wire:click="cancel" class="inline-flex items-center gap-2 text-sm font-medium text-zinc-900">
@@ -267,7 +267,7 @@
         </div>
     </div>
 @else
-<div wire:key="stat-pad" class="flex h-dvh min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900 collect-desktop:hidden">
+<div wire:key="stat-pad" class="collect-surface flex h-dvh min-h-0 flex-col overflow-hidden text-zinc-900 collect-desktop:hidden">
     @include('livewire.statistics.partials.scoreboard', ['bindGameClock' => true])
 
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -366,7 +366,7 @@
     </div>
 </div>
 
-<div wire:key="stat-pad-desktop" class="hidden h-dvh overflow-hidden bg-zinc-100 text-zinc-900 collect-desktop:grid collect-desktop:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)]">
+<div wire:key="stat-pad-desktop" class="collect-surface hidden h-dvh overflow-hidden text-zinc-900 collect-desktop:grid collect-desktop:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)]">
     <section class="flex min-h-0 flex-col border-r border-zinc-200 p-2">
         <div class="grid h-4/5 min-h-0 grid-cols-2 grid-rows-7 gap-3">
         @foreach ([
@@ -543,7 +543,7 @@
     </div>
 </div>
 
-<div x-cloak x-show="$store.collectQueue.substituting" style="z-index: 80" class="fixed inset-0 flex h-dvh min-h-0 flex-col bg-zinc-100 text-zinc-900">
+<div x-cloak x-show="$store.collectQueue.substituting" style="z-index: 80" class="collect-surface fixed inset-0 flex h-dvh min-h-0 flex-col text-zinc-900">
     <header class="shrink-0 border-b border-zinc-200 bg-white">
         <div class="mx-auto grid w-full grid-cols-3 items-center px-4 py-3">
             <button type="button" x-on:click="$store.collectQueue.substituting = false" class="inline-flex items-center gap-2 text-sm font-medium text-zinc-900">

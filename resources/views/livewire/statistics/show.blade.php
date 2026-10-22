@@ -1,4 +1,4 @@
-<div class="flex h-dvh min-h-0 flex-col bg-zinc-100 text-zinc-900">
+<div class="admin-surface flex h-dvh min-h-0 flex-col text-zinc-900">
     <header class="shrink-0 border-b border-zinc-200 bg-white">
         <div @class(['mx-auto grid w-full grid-cols-3 items-center px-4 py-3', 'max-w-5xl' => $shared])>
         @if ($shared)
