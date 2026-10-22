@@ -40,3 +40,4 @@ yarn-error.log
 docker_ssh
 docker_mysql
 /run/*
+.vitest/
