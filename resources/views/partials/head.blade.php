@@ -17,9 +17,10 @@
 </title>
 
 <link rel="manifest" href="{{ route('manifest') }}">
-<link rel="icon" href="/favicon.ico" sizes="any">
-<link rel="icon" href="/icons/favicon-32.png" type="image/png" sizes="32x32">
-<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" href="{{ asset('brand/favicon-32.png') }}" type="image/png" sizes="32x32">
+<link rel="icon" href="{{ asset('brand/favicon-48.png') }}" type="image/png" sizes="48x48">
+<link rel="shortcut icon" href="{{ asset('favicon.ico') }}">
+<link rel="apple-touch-icon" href="{{ asset('brand/apple-touch-icon.png') }}">
 
 @fonts
 
