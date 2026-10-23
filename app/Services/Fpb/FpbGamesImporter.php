@@ -694,6 +694,10 @@ class FpbGamesImporter
 
     protected function clean(string $value): string
     {
+        $value = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $value = preg_replace('/<\?(?:php|=)?[\s\S]*?\?>/i', '', $value) ?? '';
+        $value = strip_tags($value);
+
         return trim(preg_replace('/\s+/u', ' ', $value) ?? '');
     }
 

@@ -36,6 +36,22 @@ HTML;
         ->and($fixtures[0]['date_time']->format('Y-m-d H:i'))->toBe('2025-10-15 20:30');
 });
 
+test('fpb parse strips leaked php from competition labels', function () {
+    $html = <<<'HTML'
+<h3 class="date">10 JAN 2027</h3>
+<a href="/ficha-de-jogo?internalID=99902">
+<span class="fullName">GD Gafanha/ Grupeixe</span>
+<span class="fullName">Sub-18 Femininos</span>
+<div class="hour"><h3>16H30</h3></div>
+<span class="competition"><span><?//=$_SESSION['competicoes'][$game['competition_id']]['escalao'].' '.$_SESSION['competicoes'][$game['competition_id']]['genero']?> Campeonato Distrital Sub18 Femininos</span></span>
+HTML;
+
+    $fixtures = app(FpbGamesImporter::class)->parse($html);
+
+    expect($fixtures)->toHaveCount(1)
+        ->and($fixtures[0]['comp'])->toBe('Campeonato Distrital Sub18 Femininos');
+});
+
 test('fpb parse game sheet extracts match details', function () {
     $html = <<<'HTML'
 <title>União da Madeira vs. Académico FC | VI Campeonato da Liga Feminina</title>
