@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\WebAppManifestController;
 use App\Livewire\Administrators\Create as CreateAdministrator;
 use App\Livewire\Administrators\Edit as EditAdministrator;
 use App\Livewire\Administrators\Index as AdministratorIndex;
@@ -37,6 +38,8 @@ use App\Models\User;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
+
+Route::get('/manifest.webmanifest', WebAppManifestController::class)->name('manifest');
 
 Route::livewire('s/{game:share_token}', Shared::class)->name('statistics.shared');
 Route::livewire('s/season/{team:share_token}', SharedSeasonStatistics::class)->name('teams.season-statistics.shared');
