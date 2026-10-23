@@ -642,7 +642,7 @@
                 <button type="button" x-on:click="$store.collectQueue.editingType = stat.value" class="w-full rounded-lg border bg-white px-3 py-2 text-sm font-medium" :class="{ 'border-green-700 text-green-700': stat.tone === 'made', 'border-red-700 text-red-700': stat.tone === 'missed', 'border-zinc-300 text-zinc-900': stat.tone === 'plain', 'ring-2 ring-zinc-900 ring-inset': $store.collectQueue.editingType === stat.value }" x-text="stat.label"></button>
             </template>
         </div>
-        <div x-cloak x-show="$store.collectQueue.editingType === 'foul'" class="mx-auto mt-6 max-w-md space-y-2">
+        <div x-cloak x-show="$store.collectQueue.editingType === 'foul'" class="mt-6 space-y-2">
             <div class="grid grid-cols-2 gap-2">
                 <button type="button" x-on:click="$store.collectQueue.setEditingFoulKind(null)" class="rounded-lg border px-3 py-2 text-sm font-medium" :class="$store.collectQueue.editingFoulKind === null ? 'border-zinc-900 bg-amber-100 text-zinc-900' : 'border-zinc-300 bg-white text-zinc-900'" x-text="$store.collectQueue.baseline?.personalFoulLabel ?? 'Personal foul'"></button>
                 <button type="button" x-on:click="$store.collectQueue.setEditingFoulKind(($store.collectQueue.baseline?.foulKinds ?? [])[0]?.value ?? 'technical')" class="rounded-lg border px-3 py-2 text-sm font-medium" :class="$store.collectQueue.editingFoulKind !== null ? 'border-zinc-900 bg-amber-100 text-zinc-900' : 'border-zinc-300 bg-white text-zinc-900'" x-text="$store.collectQueue.baseline?.specialFoulLabel ?? 'Special foul'"></button>
@@ -888,7 +888,7 @@
                     </div>
                 @endif
                 @if ($editingType === \App\Enums\StatType::Foul->value)
-                    <div class="mx-auto mt-6 max-w-md space-y-2">
+                    <div class="mt-6 space-y-2">
                         <div class="grid grid-cols-2 gap-2">
                             <button type="button" wire:click="setEditingFoulKind(null)" @class(['rounded-lg border px-3 py-2 text-sm font-medium', 'border-zinc-900 bg-amber-100 text-zinc-900' => $editingFoulKind === null, 'border-zinc-300 bg-white text-zinc-900' => $editingFoulKind !== null])>{{ __('Personal foul') }}</button>
                             <button type="button" wire:click="setEditingFoulKind('{{ \App\Enums\FoulKind::Technical->value }}')" @class(['rounded-lg border px-3 py-2 text-sm font-medium', 'border-zinc-900 bg-amber-100 text-zinc-900' => $editingFoulKind !== null, 'border-zinc-300 bg-white text-zinc-900' => $editingFoulKind === null])>{{ __('Special foul') }}</button>
