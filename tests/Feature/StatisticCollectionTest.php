@@ -2111,6 +2111,203 @@ test('back from the players in this game returns to the dashboard', function () 
         ->assertRedirect(route('dashboard'));
 });
 
+test('the statistics log is ordered by period and countdown clock', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $game = Game::factory()->create(['team_id' => $team->id]);
+    $player = Player::factory()->create(['team_id' => $team->id, 'name' => 'Clock Order']);
+
+    giveStartingFive($game, $player);
+
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => null,
+        'home_away' => null,
+        'type' => StatType::QuarterStarted,
+        'quarter' => 1,
+        'clock' => '10:00',
+    ]);
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => $player->id,
+        'home_away' => $game->home_away,
+        'type' => StatType::Steal,
+        'quarter' => 1,
+        'clock' => '02:00',
+    ]);
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => $player->id,
+        'home_away' => $game->home_away,
+        'type' => StatType::Assist,
+        'quarter' => 1,
+        'clock' => '08:00',
+    ]);
+
+    $clocks = collect(statisticsRecord($member, $game)->instance()->lines)
+        ->where(fn (array $line): bool => $line['editable'])
+        ->pluck('clock')
+        ->values()
+        ->all();
+
+    // The log is reversed for display, so later game clocks appear first.
+    expect($clocks)->toBe(['02:00', '08:00']);
+});
+
+test('the statistics log shows the running home-away score under each clock', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $game = Game::factory()->create([
+        'team_id' => $team->id,
+        'home_away' => HomeAway::Home,
+    ]);
+    $player = Player::factory()->create(['team_id' => $team->id, 'name' => 'Score Line']);
+
+    giveStartingFive($game, $player);
+
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => null,
+        'home_away' => null,
+        'type' => StatType::QuarterStarted,
+        'quarter' => 1,
+        'clock' => '10:00',
+    ]);
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => $player->id,
+        'home_away' => HomeAway::Home,
+        'type' => StatType::TwoPointMade,
+        'quarter' => 1,
+        'clock' => '09:00',
+    ]);
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => null,
+        'home_away' => HomeAway::Away,
+        'type' => StatType::ThreePointMade,
+        'quarter' => 1,
+        'clock' => '08:00',
+    ]);
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => $player->id,
+        'home_away' => HomeAway::Home,
+        'type' => StatType::Steal,
+        'quarter' => 1,
+        'clock' => '07:00',
+    ]);
+
+    $screen = statisticsRecord($member, $game);
+    $scores = collect($screen->instance()->lines)
+        ->pluck('score', 'clock')
+        ->all();
+
+    expect($scores['10:00'])->toBe('0-0')
+        ->and($scores['09:00'])->toBe('2-0')
+        ->and($scores['08:00'])->toBe('2-3')
+        ->and($scores['07:00'])->toBe('2-3');
+
+    $screen->assertSee('2-3');
+});
+
+test('the statistics log exposes client filters for player and action', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $game = Game::factory()->create([
+        'team_id' => $team->id,
+        'opponent' => 'Filter United',
+    ]);
+    $player = Player::factory()->create([
+        'team_id' => $team->id,
+        'name' => 'Filter Player',
+        'number' => 7,
+    ]);
+
+    giveStartingFive($game, $player);
+
+    $screen = statisticsRecord($member, $game);
+
+    $playerFilters = collect($screen->instance()->logPlayerFilters);
+    $actionFilters = collect($screen->instance()->logActionFilters);
+
+    expect($playerFilters->firstWhere('value', 'player:'.$player->id)['label'] ?? null)->toBe('#7 Filter Player')
+        ->and($playerFilters->firstWhere('value', 'opponent')['label'] ?? null)->toBe('Filter United')
+        ->and($actionFilters->firstWhere('value', StatType::Steal->value)['label'] ?? null)->toBe(__(StatType::Steal->logLabel()));
+
+    $screen->assertSee(__('All players'))
+        ->assertSee(__('All actions'))
+        ->assertSee('player:'.$player->id, false)
+        ->assertSee(StatType::Steal->value, false);
+});
+
+test('editing a late substitution clock recounts minutes in game order', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $game = Game::factory()->create(['team_id' => $team->id]);
+    $starter = Player::factory()->create(['team_id' => $team->id, 'name' => 'Starter Out']);
+    $firstIn = Player::factory()->create(['team_id' => $team->id, 'name' => 'First In']);
+    $secondIn = Player::factory()->create(['team_id' => $team->id, 'name' => 'Second In']);
+    $others = Player::factory()->count(4)->create(['team_id' => $team->id]);
+
+    foreach ([$starter, ...$others] as $player) {
+        $game->players()->attach($player->id, ['starter' => true]);
+    }
+
+    $game->players()->attach($firstIn->id, ['starter' => false]);
+    $game->players()->attach($secondIn->id, ['starter' => false]);
+
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => null,
+        'home_away' => null,
+        'type' => StatType::QuarterStarted,
+        'quarter' => 1,
+        'clock' => '10:00',
+    ]);
+
+    $lateSub = GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => $firstIn->id,
+        'outgoing_player_id' => $starter->id,
+        'home_away' => $game->home_away,
+        'type' => StatType::Substitution,
+        'quarter' => 1,
+        'clock' => '02:00',
+    ]);
+
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => $secondIn->id,
+        'outgoing_player_id' => $firstIn->id,
+        'home_away' => $game->home_away,
+        'type' => StatType::Substitution,
+        'quarter' => 1,
+        'clock' => '05:00',
+    ]);
+
+    statisticsRecord($member, $game)
+        ->call('editAction', $lateSub->id)
+        ->set('editingEventClock', '08:00')
+        ->call('saveLogLine')
+        ->assertHasNoErrors();
+
+    expect($lateSub->refresh()->clock)->toBe('08:00');
+
+    $state = $game->fresh()->lineupState('03:00', true);
+
+    expect($state['seconds'][$starter->id])->toBe(120)
+        ->and($state['seconds'][$firstIn->id])->toBe(180)
+        ->and($state['seconds'][$secondIn->id])->toBe(120)
+        ->and($state['court'])->toContain($secondIn->id)
+        ->and($state['court'])->not->toContain($starter->id)
+        ->and($state['court'])->not->toContain($firstIn->id);
+});
+
 test('a substitution counts only the minutes each player is on the court', function () {
     $club = Club::factory()->create();
     $member = User::factory()->memberOf($club)->create();

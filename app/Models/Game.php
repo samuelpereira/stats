@@ -389,12 +389,13 @@ class Game extends Model
     public function boxScore(): array
     {
         $players = $this->players()->orderBy('number')->orderBy('name')->get();
-        $events = $this->events()->orderBy('id')->get();
-        $latest = $events->last();
-        $marker = $events->reverse()->first(fn (GameEvent $event): bool => $event->type->isPeriod());
+        $eventsById = $this->events()->orderBy('id')->get();
+        $latest = $eventsById->last();
+        $marker = $eventsById->reverse()->first(fn (GameEvent $event): bool => $event->type->isPeriod());
         $periodOpen = $marker instanceof GameEvent && $marker->type === StatType::QuarterStarted;
         $lineup = $this->lineupState($latest instanceof GameEvent ? $latest->clock : '00:00', $periodOpen);
         $seconds = $lineup['seconds'];
+        $events = GameEvent::sortChronologically($eventsById);
 
         $lines = [];
         $plusMinus = [];
@@ -600,7 +601,7 @@ class Game extends Model
         $running = false;
 
         $events = $this->events()
-            ->orderBy('id')
+            ->chronological()
             ->get(['id', 'type', 'clock', 'player_id', 'outgoing_player_id']);
 
         foreach ($events as $event) {

@@ -324,7 +324,14 @@
         </div>
 
         <div x-cloak x-show="$store.collectPane.name === 'record'" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
-            @include('livewire.statistics.log', ['lines' => $this->lines, 'keyPrefix' => 'mobile-line', 'homeColor' => $this->game->home_color->hex(), 'awayColor' => $this->game->away_color->hex()])
+            @include('livewire.statistics.log', [
+                'lines' => $this->lines,
+                'keyPrefix' => 'mobile-line',
+                'homeColor' => $this->game->home_color->hex(),
+                'awayColor' => $this->game->away_color->hex(),
+                'playerFilters' => $this->logPlayerFilters,
+                'actionFilters' => $this->logActionFilters,
+            ])
         </div>
 
         <div class="mt-auto shrink-0 border-t border-zinc-200 bg-white pb-[max(0.5rem,env(safe-area-inset-bottom))]">
@@ -443,7 +450,14 @@
     </section>
 
     <section class="min-h-0 overflow-y-auto overscroll-contain px-3 py-4">
-        @include('livewire.statistics.log', ['lines' => $this->lines, 'keyPrefix' => 'desktop-line', 'homeColor' => $this->game->home_color->hex(), 'awayColor' => $this->game->away_color->hex()])
+        @include('livewire.statistics.log', [
+            'lines' => $this->lines,
+            'keyPrefix' => 'desktop-line',
+            'homeColor' => $this->game->home_color->hex(),
+            'awayColor' => $this->game->away_color->hex(),
+            'playerFilters' => $this->logPlayerFilters,
+            'actionFilters' => $this->logActionFilters,
+        ])
     </section>
 </div>
 

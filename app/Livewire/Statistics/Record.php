@@ -1311,7 +1311,7 @@ class Record extends Component
     }
 
     /**
-     * @return list<array{id: int, label: string, player: string, playerLines: list<array{enters: bool, name: string}>, detail: string, missed: bool, points: int, quarter: int, clock: string, editable: bool, side: string|null}>
+     * @return list<array{id: int, label: string, player: string, playerLines: list<array{enters: bool, name: string}>, detail: string, missed: bool, points: int, quarter: int, clock: string, score: string, editable: bool, side: string|null, actionKey: string, playerKeys: list<string>}>
      */
     #[Computed]
     public function lines(): array
@@ -1320,7 +1320,57 @@ class Record extends Component
     }
 
     /**
-     * @return list<array{id: int, label: string, player: string, playerLines: list<array{enters: bool, name: string}>, detail: string, missed: bool, points: int, quarter: int, clock: string, editable: bool, side: string|null}>
+     * @return list<array{value: string, label: string}>
+     */
+    #[Computed]
+    public function logPlayerFilters(): array
+    {
+        $options = [];
+
+        foreach ($this->orderedSquad() as $player) {
+            $options[] = [
+                'value' => 'player:'.$player->id,
+                'label' => $this->loggedPlayer($player),
+            ];
+        }
+
+        $options[] = [
+            'value' => 'coach',
+            'label' => __('Coach / Bench'),
+        ];
+
+        $options[] = [
+            'value' => 'opponent',
+            'label' => $this->game->opponent,
+        ];
+
+        return $options;
+    }
+
+    /**
+     * @return list<array{value: string, label: string}>
+     */
+    #[Computed]
+    public function logActionFilters(): array
+    {
+        $options = [];
+
+        foreach (StatType::cases() as $stat) {
+            if ($stat->isPeriod()) {
+                continue;
+            }
+
+            $options[] = [
+                'value' => $stat->value,
+                'label' => __($stat->logLabel()),
+            ];
+        }
+
+        return $options;
+    }
+
+    /**
+     * @return list<array{id: int, label: string, player: string, playerLines: list<array{enters: bool, name: string}>, detail: string, missed: bool, points: int, quarter: int, clock: string, score: string, editable: bool, side: string|null, actionKey: string, playerKeys: list<string>}>
      */
     private function lineItems(): array
     {
@@ -1331,6 +1381,8 @@ class Record extends Component
         $shotsAttempted = [];
         $counts = [];
         $lines = [];
+        $teamScore = 0;
+        $opponentScore = 0;
 
         foreach ($events as $event) {
             if ($event->type->isPeriod()) {
@@ -1344,8 +1396,11 @@ class Record extends Component
                     'points' => 0,
                     'quarter' => $event->quarter,
                     'clock' => $event->clock,
+                    'score' => $this->runningScoreLabel($teamScore, $opponentScore),
                     'editable' => false,
                     'side' => null,
+                    'actionKey' => $event->type->value,
+                    'playerKeys' => [],
                 ];
 
                 continue;
@@ -1353,7 +1408,14 @@ class Record extends Component
 
             $ours = $this->game->isOurSide($event->home_away);
             $actorKey = $ours ? ($event->player_id === null ? 'team' : (string) $event->player_id) : 'opponent';
-            $points[$actorKey] = ($points[$actorKey] ?? 0) + $event->type->points();
+            $eventPoints = $event->type->points();
+            $points[$actorKey] = ($points[$actorKey] ?? 0) + $eventPoints;
+
+            if ($ours) {
+                $teamScore += $eventPoints;
+            } else {
+                $opponentScore += $eventPoints;
+            }
 
             $shooting = $event->type->shootingLog();
 
@@ -1361,7 +1423,7 @@ class Record extends Component
                 $shootingKey = $actorKey.'-'.$shooting;
                 $shotsAttempted[$shootingKey] = ($shotsAttempted[$shootingKey] ?? 0) + 1;
 
-                if ($event->type->points() > 0) {
+                if ($eventPoints > 0) {
                     $shotsMade[$shootingKey] = ($shotsMade[$shootingKey] ?? 0) + 1;
                 }
             }
@@ -1369,14 +1431,22 @@ class Record extends Component
             $countKey = $actorKey.'-'.$event->type->value;
             $counts[$countKey] = ($counts[$countKey] ?? 0) + 1;
 
+            $playerKeys = [];
+
             if (! $ours) {
                 $playerLabel = $this->game->opponent;
+                $playerKeys[] = 'opponent';
             } elseif ($event->player === null) {
-                $playerLabel = $event->type === StatType::Foul
-                    ? __('Coach / Bench')
-                    : $this->game->team->name;
+                if ($event->type === StatType::Foul) {
+                    $playerLabel = __('Coach / Bench');
+                    $playerKeys[] = 'coach';
+                } else {
+                    $playerLabel = $this->game->team->name;
+                    $playerKeys[] = 'team';
+                }
             } else {
                 $playerLabel = $this->loggedPlayer($event->player);
+                $playerKeys[] = 'player:'.$event->player->id;
             }
 
             $playerLines = [];
@@ -1386,6 +1456,14 @@ class Record extends Component
                     ['enters' => true, 'name' => $this->loggedPlayer($event->player)],
                     ['enters' => false, 'name' => $this->loggedPlayer($event->outgoingPlayer)],
                 ];
+                $playerKeys = [
+                    'player:'.$event->player->id,
+                    'player:'.$event->outgoingPlayer->id,
+                ];
+            }
+
+            if ($event->type === StatType::Timeout) {
+                $playerKeys = $ours ? ['team'] : ['opponent'];
             }
 
             $lines[] = [
@@ -1399,15 +1477,27 @@ class Record extends Component
                     ? '('.$counts[$countKey].')'
                     : $points[$actorKey].'pts '.($shotsMade[$actorKey.'-'.$shooting] ?? 0).'-'.($shotsAttempted[$actorKey.'-'.$shooting] ?? 0).' '.$shooting,
                 'missed' => $event->type->isMiss(),
-                'points' => $ours ? $event->type->points() : 0,
+                'points' => $ours ? $eventPoints : 0,
                 'quarter' => $event->quarter,
                 'clock' => $event->clock,
+                'score' => $this->runningScoreLabel($teamScore, $opponentScore),
                 'editable' => $event->type->isEditableAction(),
                 'side' => $event->home_away?->value,
+                'actionKey' => $event->type->value,
+                'playerKeys' => $playerKeys,
             ];
         }
 
         return array_reverse($lines);
+    }
+
+    private function runningScoreLabel(int $teamScore, int $opponentScore): string
+    {
+        if ($this->game->home_away === HomeAway::Home) {
+            return $teamScore.'-'.$opponentScore;
+        }
+
+        return $opponentScore.'-'.$teamScore;
     }
 
     /**
@@ -1994,7 +2084,7 @@ class Record extends Component
         return $this->loadedEvents ??= GameEvent::query()
             ->with(['player', 'outgoingPlayer'])
             ->where('game_id', $this->game->id)
-            ->orderBy('id')
+            ->chronological()
             ->get();
     }
 
@@ -2009,6 +2099,7 @@ class Record extends Component
 
         $event->loadMissing(['player', 'outgoingPlayer']);
         $this->loadedEvents->push($event);
+        $this->loadedEvents = GameEvent::sortChronologically($this->loadedEvents);
     }
 
     private function forgetCollectedEvents(): void

@@ -89,6 +89,14 @@ function pointsFor(type) {
     return 0;
 }
 
+function runningScoreLabel(homeAway, teamPoints, opponentPoints) {
+    if (homeAway === 'home') {
+        return `${teamPoints}-${opponentPoints}`;
+    }
+
+    return `${opponentPoints}-${teamPoints}`;
+}
+
 function createCollectQueue() {
     return {
         wire: null,
@@ -189,7 +197,6 @@ function createCollectQueue() {
 
             this.items.forEach((item) => {
                 if (item.operation === 'record') {
-                    lines.push(this.recordLine(item));
                     const points = pointsFor(item.payload.type);
 
                     if (item.payload.forOpponent) {
@@ -197,19 +204,21 @@ function createCollectQueue() {
                     } else {
                         teamPoints += points;
                     }
+
+                    lines.push(this.recordLine(item, teamPoints, opponentPoints));
                 }
 
                 if (item.operation === 'substitution') {
-                    lines.push(this.substitutionLine(item, court));
+                    lines.push(this.substitutionLine(item, court, teamPoints, opponentPoints));
                     court = (item.payload.playerIds ?? []).map((id) => Number(id));
                 }
 
                 if (item.operation === 'timeout') {
-                    lines.push(this.timeoutLine(item));
+                    lines.push(this.timeoutLine(item, teamPoints, opponentPoints));
                 }
 
                 if (item.operation === 'period' && item.payload.type === 'quarter_ended') {
-                    lines.push(this.periodLine(item));
+                    lines.push(this.periodLine(item, teamPoints, opponentPoints));
                     awaitingQuarterStart = true;
                     quarterEnded = false;
                     periodOpen = false;
@@ -217,7 +226,7 @@ function createCollectQueue() {
                 }
 
                 if (item.operation === 'period' && item.payload.type === 'quarter_started') {
-                    lines.push(this.periodLine(item));
+                    lines.push(this.periodLine(item, teamPoints, opponentPoints));
                     awaitingQuarterStart = false;
                     quarterEnded = false;
                     periodOpen = true;
@@ -1026,17 +1035,21 @@ function createCollectQueue() {
             return (this.local?.court ?? []).includes(playerId);
         },
 
-        recordLine(item) {
+        recordLine(item, teamPoints, opponentPoints) {
             const ours = ! item.payload.forOpponent;
             let player = this.baseline.opponentName;
+            let playerKeys = ['opponent'];
 
             if (ours) {
                 if (item.payload.playerId) {
                     player = this.baseline.roster.find((rosterPlayer) => rosterPlayer.id === Number(item.payload.playerId))?.label ?? '';
+                    playerKeys = [`player:${Number(item.payload.playerId)}`];
                 } else if (item.payload.type === 'foul') {
                     player = this.baseline.coachBenchLabel ?? 'Coach / Bench';
+                    playerKeys = ['coach'];
                 } else {
                     player = this.baseline.teamName ?? '';
+                    playerKeys = ['team'];
                 }
             }
 
@@ -1047,16 +1060,19 @@ function createCollectQueue() {
             return {
                 id: item.id,
                 clock: item.payload.clock,
+                score: runningScoreLabel(this.baseline.homeAway, teamPoints, opponentPoints),
                 player,
                 playerLines: [],
                 label,
                 side: ours ? this.baseline.homeAway : oppositeSide(this.baseline.homeAway),
                 editable: true,
                 missed: String(item.payload.type).includes('missed'),
+                actionKey: item.payload.type,
+                playerKeys,
             };
         },
 
-        substitutionLine(item, court) {
+        substitutionLine(item, court, teamPoints, opponentPoints) {
             const next = new Set((item.payload.playerIds ?? []).map((id) => Number(id)));
             const previous = new Set(court);
             const entering = this.baseline.roster.filter((player) => next.has(player.id) && ! previous.has(player.id));
@@ -1065,6 +1081,7 @@ function createCollectQueue() {
             return {
                 id: item.id,
                 clock: item.payload.clock,
+                score: runningScoreLabel(this.baseline.homeAway, teamPoints, opponentPoints),
                 player: '',
                 playerLines: [
                     ...entering.map((player) => ({ enters: true, name: player.label })),
@@ -1074,36 +1091,44 @@ function createCollectQueue() {
                 side: this.baseline.homeAway,
                 editable: false,
                 missed: false,
+                actionKey: 'substitution',
+                playerKeys: [...entering, ...leaving].map((player) => `player:${player.id}`),
             };
         },
 
-        timeoutLine(item) {
+        timeoutLine(item, teamPoints, opponentPoints) {
             const ours = item.payload.side === this.baseline.homeAway;
 
             return {
                 id: item.id,
                 clock: item.payload.clock,
+                score: runningScoreLabel(this.baseline.homeAway, teamPoints, opponentPoints),
                 player: ours ? this.baseline.teamName : this.baseline.opponentName,
                 playerLines: [],
                 label: this.baseline.labels.timeout ?? 'timeout',
                 side: item.payload.side,
                 editable: false,
                 missed: false,
+                actionKey: 'timeout',
+                playerKeys: ours ? ['team'] : ['opponent'],
             };
         },
 
-        periodLine(item) {
+        periodLine(item, teamPoints, opponentPoints) {
             const started = item.payload.type === 'quarter_started';
 
             return {
                 id: item.id,
                 clock: item.payload.clock,
+                score: runningScoreLabel(this.baseline.homeAway, teamPoints, opponentPoints),
                 player: '',
                 playerLines: [],
                 label: this.baseline.labels[item.payload.type] ?? (started ? 'period start' : 'period end'),
                 side: null,
                 editable: false,
                 missed: false,
+                actionKey: item.payload.type,
+                playerKeys: [],
             };
         },
     };
