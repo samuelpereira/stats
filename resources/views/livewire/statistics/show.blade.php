@@ -203,6 +203,23 @@
 
         @include('livewire.statistics.partials.matchup')
 
+        @if ($gameFlow !== null)
+            <div class="mt-4 rounded-lg border border-zinc-200 bg-white px-4 py-4 shadow-sm sm:px-6">
+                <div class="mb-2">
+                    <h2 class="text-base font-semibold">{{ __('Game flow') }}</h2>
+                    <p class="text-sm text-zinc-500">{{ __('Score progress through the game') }}</p>
+                </div>
+                <x-game-flow-chart
+                    :flow="$gameFlow"
+                    :home-color="$homeColor"
+                    :away-color="$awayColor"
+                    :home-name="$homeName"
+                    :away-name="$awayName"
+                    :lineup-color="$teamColor"
+                />
+            </div>
+        @endif
+
         @if (count($shotChartsByPeriod) > 0)
             <div class="mt-4 rounded-lg border border-zinc-200 bg-white px-4 py-4 shadow-sm sm:px-6">
                 <div class="mb-4 flex flex-wrap items-end justify-between gap-3">

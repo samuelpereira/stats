@@ -797,6 +797,175 @@ class Game extends Model
         return array_values($players);
     }
 
+    /**
+     * Cumulative home/away score over elapsed game time, for the statistics flow chart.
+     *
+     * @return array{
+     *     points: list<array{x: float, home: int, away: int}>,
+     *     markers: list<array{x: float, label: string}>,
+     *     lineups: list<array{x: float, players: list<array{id: int, number: int|null, name: string, label: string}>}>,
+     *     maxX: float,
+     *     maxScore: int
+     * }|null
+     */
+    public function gameFlow(): ?array
+    {
+        $events = $this->events()
+            ->chronological()
+            ->get(['type', 'quarter', 'clock', 'home_away', 'player_id', 'outgoing_player_id']);
+
+        $playersById = $this->players()
+            ->orderBy('number')
+            ->orderBy('name')
+            ->get(['players.id', 'players.number', 'players.name'])
+            ->keyBy('id');
+
+        $onCourt = [];
+
+        foreach ($this->players()->wherePivot('starter', true)->orderBy('number')->pluck('players.id') as $playerId) {
+            $onCourt[] = (int) $playerId;
+        }
+
+        $home = 0;
+        $away = 0;
+        $maxQuarter = 0;
+        $hasScore = false;
+        $points = [
+            ['x' => 0.0, 'home' => 0, 'away' => 0],
+        ];
+        $lineups = [];
+
+        if ($onCourt !== []) {
+            $this->pushGameFlowLineup($lineups, 0.0, $onCourt, $playersById);
+        }
+
+        foreach ($events as $event) {
+            $maxQuarter = max($maxQuarter, $event->quarter);
+
+            if ($event->type === StatType::Substitution && $event->player_id !== null && $event->outgoing_player_id !== null) {
+                $outgoingId = (int) $event->outgoing_player_id;
+                $onCourt = array_values(array_filter(
+                    $onCourt,
+                    fn (int $playerId): bool => $playerId !== $outgoingId,
+                ));
+                $incomingId = (int) $event->player_id;
+
+                if (! in_array($incomingId, $onCourt, true)) {
+                    $onCourt[] = $incomingId;
+                }
+
+                $this->pushGameFlowLineup(
+                    $lineups,
+                    $this->elapsedSecondsAt($event->quarter, $event->clock),
+                    $onCourt,
+                    $playersById,
+                );
+            }
+
+            $scored = $event->type->points();
+
+            if ($scored === 0 || $event->home_away === null) {
+                continue;
+            }
+
+            $hasScore = true;
+
+            if ($event->home_away === HomeAway::Home) {
+                $home += $scored;
+            } else {
+                $away += $scored;
+            }
+
+            $points[] = [
+                'x' => $this->elapsedSecondsAt($event->quarter, $event->clock),
+                'home' => $home,
+                'away' => $away,
+            ];
+        }
+
+        if (! $hasScore) {
+            return null;
+        }
+
+        $maxQuarter = max($maxQuarter, 1);
+        $endX = (float) $this->periodEndSeconds($maxQuarter);
+        $lastX = $points[array_key_last($points)]['x'];
+
+        if ($endX > $lastX) {
+            $points[] = [
+                'x' => $endX,
+                'home' => $home,
+                'away' => $away,
+            ];
+        }
+
+        $markers = [];
+
+        for ($quarter = 1; $quarter <= $maxQuarter; $quarter++) {
+            $markers[] = [
+                'x' => (float) $this->periodEndSeconds($quarter),
+                'label' => $this->shotChartPeriodLabel($quarter),
+            ];
+        }
+
+        return [
+            'points' => $points,
+            'markers' => $markers,
+            'lineups' => $lineups,
+            'maxX' => max($endX, $lastX, 1.0),
+            'maxScore' => max($home, $away, 1),
+        ];
+    }
+
+    /**
+     * @param  list<array{x: float, players: list<array{id: int, number: int|null, name: string, label: string}>}>  $lineups
+     * @param  list<int>  $onCourt
+     * @param  \Illuminate\Support\Collection<int, Player>  $playersById
+     */
+    private function pushGameFlowLineup(array &$lineups, float $x, array $onCourt, \Illuminate\Support\Collection $playersById): void
+    {
+        $players = [];
+
+        foreach ($onCourt as $playerId) {
+            $player = $playersById->get($playerId);
+
+            if (! $player instanceof Player) {
+                continue;
+            }
+
+            $number = $player->number;
+            $players[] = [
+                'id' => $player->id,
+                'number' => $number,
+                'name' => $player->name,
+                'label' => $number === null ? $player->name : '#'.$number.' '.$player->name,
+            ];
+        }
+
+        usort($players, function (array $left, array $right): int {
+            $byNumber = ($left['number'] ?? PHP_INT_MAX) <=> ($right['number'] ?? PHP_INT_MAX);
+
+            if ($byNumber !== 0) {
+                return $byNumber;
+            }
+
+            return strcasecmp($left['name'], $right['name']);
+        });
+
+        $marker = [
+            'x' => $x,
+            'players' => $players,
+        ];
+
+        if ($lineups !== [] && abs($lineups[array_key_last($lineups)]['x'] - $x) < 0.01) {
+            $lineups[array_key_last($lineups)] = $marker;
+
+            return;
+        }
+
+        $lineups[] = $marker;
+    }
+
     public function score(): ?string
     {
         if ($this->home_points === null || $this->away_points === null) {
@@ -829,5 +998,36 @@ class Game extends Model
         }
 
         return 'OT'.($quarter - 4);
+    }
+
+    private function elapsedSecondsAt(int $quarter, string $clock): float
+    {
+        $length = $this->periodLengthSeconds($quarter);
+        $remaining = min($length, self::clockToSeconds($clock));
+
+        return $this->secondsBeforePeriod($quarter) + max(0, $length - $remaining);
+    }
+
+    private function periodEndSeconds(int $quarter): int
+    {
+        return $this->secondsBeforePeriod($quarter) + $this->periodLengthSeconds($quarter);
+    }
+
+    private function secondsBeforePeriod(int $quarter): int
+    {
+        $seconds = 0;
+
+        for ($index = 1; $index < $quarter; $index++) {
+            $seconds += $this->periodLengthSeconds($index);
+        }
+
+        return $seconds;
+    }
+
+    private function periodLengthSeconds(int $quarter): int
+    {
+        $minutes = $quarter <= 4 ? $this->quarter_minutes : $this->overtime_minutes;
+
+        return max(1, $minutes) * 60;
     }
 }
