@@ -711,6 +711,10 @@ class Game extends Model
 
         foreach ($events as $event) {
             if ($event->type === StatType::QuarterStarted) {
+                if ($this->lineupHistoryMatchesClock($history, $event->quarter, $event->clock)) {
+                    continue;
+                }
+
                 $history[] = $this->lineupHistoryRow(
                     $event->quarter,
                     $event->clock,
@@ -737,16 +741,36 @@ class Game extends Model
                 $onCourt[] = $incomingId;
             }
 
-            $history[] = $this->lineupHistoryRow(
+            $row = $this->lineupHistoryRow(
                 $event->quarter,
                 $event->clock,
                 'substitution',
                 $onCourt,
                 $playersById,
             );
+
+            if ($this->lineupHistoryMatchesClock($history, $event->quarter, $event->clock)) {
+                $history[array_key_last($history)] = $row;
+
+                continue;
+            }
+
+            $history[] = $row;
         }
 
         return $history;
+    }
+
+    /**
+     * @param  list<array{quarter: int, clock: string, reason: string, period: string, players: list<array{id: int, number: int|null, name: string, label: string}>}>  $history
+     */
+    private function lineupHistoryMatchesClock(array $history, int $quarter, string $clock): bool
+    {
+        $last = $history === [] ? null : $history[array_key_last($history)];
+
+        return is_array($last)
+            && $last['quarter'] === $quarter
+            && $last['clock'] === $clock;
     }
 
     /**

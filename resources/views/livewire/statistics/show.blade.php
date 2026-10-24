@@ -308,7 +308,7 @@
             <div class="mt-4 overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-sm">
                 <div class="border-b border-zinc-200 px-4 py-3 sm:px-6">
                     <h2 class="text-base font-semibold">{{ __('Lineups') }}</h2>
-                    <p class="text-sm text-zinc-500">{{ __('Court five at each period start and substitution') }}</p>
+                    <p class="text-sm text-zinc-500">{{ __('At each period start and substitution') }}</p>
                 </div>
                 <table class="w-full text-xs">
                     <thead>

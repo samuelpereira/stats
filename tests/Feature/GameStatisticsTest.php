@@ -342,9 +342,95 @@ test('lineup history lists the court five at period starts and substitutions', f
     Livewire::actingAs($member)
         ->test(StatisticsShow::class, ['game' => $game])
         ->assertSee('Lineups')
-        ->assertSee('Court five at each period start and substitution')
+        ->assertSee('At each period start and substitution')
         ->assertSee('#12 Bench In')
         ->assertViewHas('lineupHistory', fn (array $rows): bool => count($rows) === 3);
+});
+
+test('lineup history keeps only the last substitution when several share the opening clock', function () {
+    $club = Club::factory()->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $game = Game::factory()->create([
+        'team_id' => $team->id,
+        'home_away' => HomeAway::Home,
+        'quarter_minutes' => 10,
+    ]);
+    $starters = Player::factory()->count(5)->sequence(
+        ['name' => 'Starter A', 'number' => 1],
+        ['name' => 'Starter B', 'number' => 2],
+        ['name' => 'Starter C', 'number' => 3],
+        ['name' => 'Starter D', 'number' => 4],
+        ['name' => 'Starter E', 'number' => 5],
+    )->create(['team_id' => $team->id]);
+    $firstBench = Player::factory()->create([
+        'team_id' => $team->id,
+        'name' => 'First Bench',
+        'number' => 11,
+    ]);
+    $finalBench = Player::factory()->create([
+        'team_id' => $team->id,
+        'name' => 'Final Bench',
+        'number' => 12,
+    ]);
+
+    foreach ($starters as $starter) {
+        $game->players()->attach($starter->id, ['starter' => true]);
+    }
+    $game->players()->attach($firstBench->id, ['starter' => false]);
+    $game->players()->attach($finalBench->id, ['starter' => false]);
+
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => null,
+        'home_away' => null,
+        'type' => StatType::QuarterStarted,
+        'quarter' => 1,
+        'clock' => '10:00',
+    ]);
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => null,
+        'home_away' => null,
+        'type' => StatType::QuarterEnded,
+        'quarter' => 1,
+        'clock' => '00:00',
+    ]);
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => $firstBench->id,
+        'outgoing_player_id' => $starters[0]->id,
+        'home_away' => HomeAway::Home,
+        'type' => StatType::Substitution,
+        'quarter' => 2,
+        'clock' => '10:00',
+    ]);
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => $finalBench->id,
+        'outgoing_player_id' => $firstBench->id,
+        'home_away' => HomeAway::Home,
+        'type' => StatType::Substitution,
+        'quarter' => 2,
+        'clock' => '10:00',
+    ]);
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => null,
+        'home_away' => null,
+        'type' => StatType::QuarterStarted,
+        'quarter' => 2,
+        'clock' => '10:00',
+    ]);
+
+    $history = $game->lineupHistory();
+
+    expect($history)->toHaveCount(2)
+        ->and($history[0]['reason'])->toBe('period_start')
+        ->and($history[0]['period'])->toBe('Q1')
+        ->and($history[1]['reason'])->toBe('substitution')
+        ->and($history[1]['period'])->toBe('Q2')
+        ->and($history[1]['clock'])->toBe('10:00')
+        ->and(collect($history[1]['players'])->pluck('number')->all())->toBe([2, 3, 4, 5, 12]);
 });
 
 test('game flow builds cumulative home and away scores over elapsed time', function () {
