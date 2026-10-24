@@ -711,13 +711,13 @@ class Game extends Model
 
         foreach ($events as $event) {
             if ($event->type === StatType::QuarterStarted) {
-                $history[] = $this->lineupHistoryRow(
+                $this->putLineupHistoryRow($history, $this->lineupHistoryRow(
                     $event->quarter,
                     $event->clock,
                     'period_start',
                     $onCourt,
                     $playersById,
-                );
+                ));
 
                 continue;
             }
@@ -737,32 +737,45 @@ class Game extends Model
                 $onCourt[] = $incomingId;
             }
 
-            $row = $this->lineupHistoryRow(
+            $this->putLineupHistoryRow($history, $this->lineupHistoryRow(
                 $event->quarter,
                 $event->clock,
                 'substitution',
                 $onCourt,
                 $playersById,
-            );
-
-            $lastKey = array_key_last($history);
-            $last = $lastKey === null ? null : $history[$lastKey];
-
-            if (
-                is_array($last)
-                && $last['reason'] === 'substitution'
-                && $last['quarter'] === $event->quarter
-                && $last['clock'] === $event->clock
-            ) {
-                $history[$lastKey] = $row;
-
-                continue;
-            }
-
-            $history[] = $row;
+            ));
         }
 
         return $history;
+    }
+
+    /**
+     * Same period and clock collapse to one row. Tip-off keeps "period start" when
+     * substitutions share that opening clock.
+     *
+     * @param  list<array{quarter: int, period: string, clock: string, reason: 'period_start'|'substitution', players: list<array{id: int, number: int|null, name: string, label: string}>}>  $history
+     * @param  array{quarter: int, period: string, clock: string, reason: 'period_start'|'substitution', players: list<array{id: int, number: int|null, name: string, label: string}>}  $row
+     */
+    private function putLineupHistoryRow(array &$history, array $row): void
+    {
+        $lastKey = array_key_last($history);
+        $last = $lastKey === null ? null : $history[$lastKey];
+
+        if (
+            is_array($last)
+            && $last['quarter'] === $row['quarter']
+            && $last['clock'] === $row['clock']
+        ) {
+            if ($last['reason'] === 'period_start' || $row['reason'] === 'period_start') {
+                $row['reason'] = 'period_start';
+            }
+
+            $history[$lastKey] = $row;
+
+            return;
+        }
+
+        $history[] = $row;
     }
 
     /**
