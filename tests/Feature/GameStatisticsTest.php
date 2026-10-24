@@ -424,13 +424,17 @@ test('lineup history keeps only the last substitution when several share the ope
 
     $history = $game->lineupHistory();
 
-    expect($history)->toHaveCount(2)
+    expect($history)->toHaveCount(3)
         ->and($history[0]['reason'])->toBe('period_start')
         ->and($history[0]['period'])->toBe('Q1')
         ->and($history[1]['reason'])->toBe('substitution')
         ->and($history[1]['period'])->toBe('Q2')
         ->and($history[1]['clock'])->toBe('10:00')
-        ->and(collect($history[1]['players'])->pluck('number')->all())->toBe([2, 3, 4, 5, 12]);
+        ->and(collect($history[1]['players'])->pluck('number')->all())->toBe([2, 3, 4, 5, 12])
+        ->and($history[2]['reason'])->toBe('period_start')
+        ->and($history[2]['period'])->toBe('Q2')
+        ->and($history[2]['clock'])->toBe('10:00')
+        ->and(collect($history[2]['players'])->pluck('number')->all())->toBe([2, 3, 4, 5, 12]);
 });
 
 test('game flow builds cumulative home and away scores over elapsed time', function () {
