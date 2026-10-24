@@ -1,9 +1,12 @@
 <?php
 
+use App\Enums\StatType;
 use App\Livewire\Statistics\Shared;
 use App\Livewire\Statistics\Show as StatisticsShow;
 use App\Models\Club;
 use App\Models\Game;
+use App\Models\GameEvent;
+use App\Models\Player;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -15,6 +18,20 @@ beforeEach(function () {
 
 test('a public link shows the game statistics without signing in', function () {
     [$member, $game] = sharedStatisticsGame();
+    $starters = Player::factory()->count(5)->create(['team_id' => $game->team_id]);
+
+    foreach ($starters as $starter) {
+        $game->players()->attach($starter->id, ['starter' => true]);
+    }
+
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => null,
+        'home_away' => null,
+        'type' => StatType::QuarterStarted,
+        'quarter' => 1,
+        'clock' => '10:00',
+    ]);
 
     Livewire::actingAs($member)
         ->test(StatisticsShow::class, ['game' => $game])
@@ -30,11 +47,11 @@ test('a public link shows the game statistics without signing in', function () {
         ->assertDontSee('ADC 0 vs Metro United 0 - ', false)
         ->assertDontSee(__('Turn the screen sideways'))
         ->assertDontSee(__('Back'))
-        ->assertDontSee(__('On court'))
         ->assertDontSee(__('Bench'))
-        ->assertDontSee(__('Lineups'))
+        ->assertSee(__('Lineups'))
+        ->assertSee(__('Period start'))
         ->assertDontSee(__('Stop sharing'))
-        ->assertSeeInOrder(['Box score', 'Matchup']);
+        ->assertSeeInOrder(['Box score', 'Matchup', 'Lineups']);
 });
 
 test('the game uuid does not open the public statistics', function () {

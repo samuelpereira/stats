@@ -121,7 +121,7 @@ class Show extends Component
             'matchups' => $this->matchups($homeLine, $awayLine),
             'shotChartsByPeriod' => $this->filteredShotChartsByPeriod(),
             'gameFlow' => $this->game->gameFlow(),
-            'lineupHistory' => $this->shared ? [] : $this->game->lineupHistory(),
+            'lineupHistory' => $this->game->lineupHistory(),
             'homeShotChartPlayers' => $this->game->shotChartPlayers(HomeAway::Home),
             'awayShotChartPlayers' => $this->game->shotChartPlayers(HomeAway::Away),
             'homeColor' => $this->game->home_color->hex(),

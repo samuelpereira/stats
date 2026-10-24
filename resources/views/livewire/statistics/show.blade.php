@@ -304,7 +304,7 @@
             </div>
         @endif
 
-        @if (! $shared && count($lineupHistory) > 0)
+        @if (count($lineupHistory) > 0)
             <div class="mt-4 overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-sm">
                 <div class="border-b border-zinc-200 px-4 py-3 sm:px-6">
                     <h2 class="text-base font-semibold">{{ __('Lineups') }}</h2>
