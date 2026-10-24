@@ -215,7 +215,6 @@
                     :away-color="$awayColor"
                     :home-name="$homeName"
                     :away-name="$awayName"
-                    :lineup-color="$teamColor"
                 />
             </div>
         @endif
@@ -302,6 +301,44 @@
                         </div>
                     @endforeach
                 </div>
+            </div>
+        @endif
+
+        @if (! $shared && count($lineupHistory) > 0)
+            <div class="mt-4 overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-sm">
+                <div class="border-b border-zinc-200 px-4 py-3 sm:px-6">
+                    <h2 class="text-base font-semibold">{{ __('Lineups') }}</h2>
+                    <p class="text-sm text-zinc-500">{{ __('Court five at each period start and substitution') }}</p>
+                </div>
+                <table class="w-full text-xs">
+                    <thead>
+                        <tr class="border-b border-zinc-200 text-xs font-medium tracking-wide text-zinc-500 uppercase">
+                            <th class="px-3 py-2 text-left font-medium sm:px-6">{{ __('Period') }}</th>
+                            <th class="px-2 py-2 text-left font-medium">{{ __('Clock') }}</th>
+                            <th class="px-2 py-2 text-left font-medium">{{ __('On court') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($lineupHistory as $index => $line)
+                            <tr wire:key="lineup-history-{{ $index }}" class="border-b border-zinc-100 align-top last:border-0">
+                                <td class="px-3 py-2 font-medium tabular-nums sm:px-6">
+                                    {{ $line['period'] }}
+                                    <span class="mt-0.5 block text-[11px] font-normal normal-case tracking-normal text-zinc-500">
+                                        {{ $line['reason'] === 'period_start' ? __('Period start') : __('sub') }}
+                                    </span>
+                                </td>
+                                <td class="px-2 py-2 tabular-nums text-zinc-600">{{ $line['clock'] }}</td>
+                                <td class="px-2 py-2.5">
+                                    <div class="flex flex-wrap gap-x-3 gap-y-1">
+                                        @foreach ($line['players'] as $player)
+                                            <span class="font-medium whitespace-nowrap text-zinc-900">{{ $player['label'] }}</span>
+                                        @endforeach
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
             </div>
         @endif
         </div>

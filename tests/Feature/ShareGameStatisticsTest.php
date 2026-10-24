@@ -32,6 +32,7 @@ test('a public link shows the game statistics without signing in', function () {
         ->assertDontSee(__('Back'))
         ->assertDontSee(__('On court'))
         ->assertDontSee(__('Bench'))
+        ->assertDontSee(__('Lineups'))
         ->assertDontSee(__('Stop sharing'))
         ->assertSeeInOrder(['Box score', 'Matchup']);
 });

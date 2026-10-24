@@ -138,15 +138,7 @@ class Record extends Component
     {
         $this->authorize('collect', $this->game);
 
-        if ($this->awaitingQuarterStart) {
-            return;
-        }
-
         $stat = StatType::from($type);
-
-        if ($stat !== StatType::Substitution && ! $this->periodIsOpen()) {
-            return;
-        }
 
         if ($stat === StatType::Substitution) {
             $this->pendingType = null;
@@ -158,13 +150,17 @@ class Record extends Component
                 return;
             }
 
-            if (! $this->periodIsOpen()) {
+            if (! $this->canSubstituteNow()) {
                 return;
             }
 
             $this->substituting = true;
             $this->courtSelection = $this->lineup()['court'];
 
+            return;
+        }
+
+        if ($this->awaitingQuarterStart || ! $this->periodIsOpen()) {
             return;
         }
 
@@ -455,7 +451,7 @@ class Record extends Component
     {
         $this->authorize('collect', $this->game);
 
-        if (! $this->substituting || ! $this->periodIsOpen()) {
+        if (! $this->substituting || ! $this->canSubstituteNow()) {
             return;
         }
 
@@ -476,7 +472,7 @@ class Record extends Component
     {
         $this->authorize('collect', $this->game);
 
-        if (! $this->substituting || ! $this->periodIsOpen()) {
+        if (! $this->substituting || ! $this->canSubstituteNow()) {
             return;
         }
 
@@ -504,6 +500,12 @@ class Record extends Component
         }
 
         $this->resetErrorBag('court');
+
+        if ($this->awaitingQuarterStart) {
+            $this->clock = $this->openingClock();
+            $clock = $this->clock;
+        }
+
         $this->applyCollectedClock($clock);
         $current = $this->lineup()['court'];
         $leaving = [];
@@ -1348,23 +1350,46 @@ class Record extends Component
     }
 
     /**
-     * @return list<array{value: string, label: string}>
+     * @return list<array{id: string, keys: list<string>, label: string}>
      */
     #[Computed]
     public function logActionFilters(): array
     {
         $options = [];
+        $grouped = [];
+
+        foreach ([
+            [StatType::FreeThrowMade, StatType::FreeThrowMissed],
+            [StatType::TwoPointMade, StatType::TwoPointMissed],
+            [StatType::ThreePointMade, StatType::ThreePointMissed],
+        ] as $group) {
+            $keys = array_map(fn (StatType $stat): string => $stat->value, $group);
+            $id = $group[0]->value;
+
+            foreach ($keys as $key) {
+                $grouped[$key] = true;
+            }
+
+            $options[] = [
+                'id' => $id,
+                'keys' => $keys,
+                'label' => __($group[0]->logLabel()),
+            ];
+        }
 
         foreach (StatType::cases() as $stat) {
-            if ($stat->isPeriod()) {
+            if ($stat->isPeriod() || isset($grouped[$stat->value])) {
                 continue;
             }
 
             $options[] = [
-                'value' => $stat->value,
+                'id' => $stat->value,
+                'keys' => [$stat->value],
                 'label' => __($stat->logLabel()),
             ];
         }
+
+        usort($options, fn (array $left, array $right): int => strcasecmp($left['label'], $right['label']));
 
         return $options;
     }
@@ -1810,7 +1835,16 @@ class Record extends Component
             return $selected;
         }
 
+        if ($this->awaitingQuarterStart) {
+            return $this->quarter;
+        }
+
         return $this->game->openPeriod();
+    }
+
+    private function canSubstituteNow(): bool
+    {
+        return $this->periodIsOpen() || $this->awaitingQuarterStart;
     }
 
     #[Computed]

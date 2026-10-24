@@ -240,7 +240,9 @@ class Game extends Model
     }
 
     /**
-     * The latest action recorded while the current period is still open.
+     * The latest action that can be undone: while the period is open, or after the
+     * period ended (for example a substitution before the next tip-off). Ending a
+     * period itself cannot be undone.
      */
     public function latestUndoableEvent(): ?GameEvent
     {
@@ -252,7 +254,7 @@ class Game extends Model
             }
 
             if ($event->type === StatType::QuarterEnded) {
-                return null;
+                return $candidate;
             }
 
             $candidate ??= $event;
@@ -673,6 +675,136 @@ class Game extends Model
         ];
     }
 
+    /**
+     * Court fives over the game: a row at each period start and after each substitution.
+     *
+     * @return list<array{
+     *     quarter: int,
+     *     period: string,
+     *     clock: string,
+     *     reason: 'period_start'|'substitution',
+     *     players: list<array{id: int, number: int|null, name: string, label: string}>
+     * }>
+     */
+    public function lineupHistory(): array
+    {
+        $playersById = $this->players()
+            ->orderBy('number')
+            ->orderBy('name')
+            ->get(['players.id', 'players.number', 'players.name'])
+            ->keyBy('id');
+
+        $onCourt = [];
+
+        foreach ($this->players()->wherePivot('starter', true)->orderBy('number')->pluck('players.id') as $playerId) {
+            $onCourt[] = (int) $playerId;
+        }
+
+        if ($onCourt === []) {
+            return [];
+        }
+
+        $history = [];
+        $events = $this->events()
+            ->chronological()
+            ->get(['type', 'quarter', 'clock', 'player_id', 'outgoing_player_id']);
+
+        foreach ($events as $event) {
+            if ($event->type === StatType::QuarterStarted) {
+                $history[] = $this->lineupHistoryRow(
+                    $event->quarter,
+                    $event->clock,
+                    'period_start',
+                    $onCourt,
+                    $playersById,
+                );
+
+                continue;
+            }
+
+            if ($event->type !== StatType::Substitution || $event->player_id === null || $event->outgoing_player_id === null) {
+                continue;
+            }
+
+            $outgoingId = (int) $event->outgoing_player_id;
+            $onCourt = array_values(array_filter(
+                $onCourt,
+                fn (int $playerId): bool => $playerId !== $outgoingId,
+            ));
+            $incomingId = (int) $event->player_id;
+
+            if (! in_array($incomingId, $onCourt, true)) {
+                $onCourt[] = $incomingId;
+            }
+
+            $history[] = $this->lineupHistoryRow(
+                $event->quarter,
+                $event->clock,
+                'substitution',
+                $onCourt,
+                $playersById,
+            );
+        }
+
+        return $history;
+    }
+
+    /**
+     * @param  'period_start'|'substitution'  $reason
+     * @param  list<int>  $onCourt
+     * @param  \Illuminate\Support\Collection<int, Player>  $playersById
+     * @return array{
+     *     quarter: int,
+     *     period: string,
+     *     clock: string,
+     *     reason: 'period_start'|'substitution',
+     *     players: list<array{id: int, number: int|null, name: string, label: string}>
+     * }
+     */
+    private function lineupHistoryRow(
+        int $quarter,
+        string $clock,
+        string $reason,
+        array $onCourt,
+        \Illuminate\Support\Collection $playersById,
+    ): array {
+        $players = [];
+
+        foreach ($onCourt as $playerId) {
+            $player = $playersById->get($playerId);
+
+            if (! $player instanceof Player) {
+                continue;
+            }
+
+            $number = $player->number;
+            $players[] = [
+                'id' => $player->id,
+                'number' => $number,
+                'name' => $player->name,
+                'label' => $number === null ? $player->name : '#'.$number.' '.$player->name,
+            ];
+        }
+
+        usort($players, function (array $left, array $right): int {
+            $byNumber = ($left['number'] ?? PHP_INT_MAX) <=> ($right['number'] ?? PHP_INT_MAX);
+
+            if ($byNumber !== 0) {
+                return $byNumber;
+            }
+
+            return strcasecmp($left['name'], $right['name']);
+        });
+
+        return [
+            'quarter' => $quarter,
+            'period' => $this->shotChartPeriodLabel($quarter),
+            'clock' => $clock,
+            'reason' => $reason,
+            'players' => $players,
+        ];
+    }
+
     private static function clockToSeconds(string $clock): int
     {
         if (! str_contains($clock, ':')) {
@@ -803,7 +935,6 @@ class Game extends Model
      * @return array{
      *     points: list<array{x: float, home: int, away: int}>,
      *     markers: list<array{x: float, label: string}>,
-     *     lineups: list<array{x: float, players: list<array{id: int, number: int|null, name: string, label: string}>}>,
      *     maxX: float,
      *     maxScore: int
      * }|null
@@ -812,19 +943,7 @@ class Game extends Model
     {
         $events = $this->events()
             ->chronological()
-            ->get(['type', 'quarter', 'clock', 'home_away', 'player_id', 'outgoing_player_id']);
-
-        $playersById = $this->players()
-            ->orderBy('number')
-            ->orderBy('name')
-            ->get(['players.id', 'players.number', 'players.name'])
-            ->keyBy('id');
-
-        $onCourt = [];
-
-        foreach ($this->players()->wherePivot('starter', true)->orderBy('number')->pluck('players.id') as $playerId) {
-            $onCourt[] = (int) $playerId;
-        }
+            ->get(['type', 'quarter', 'clock', 'home_away']);
 
         $home = 0;
         $away = 0;
@@ -833,35 +952,9 @@ class Game extends Model
         $points = [
             ['x' => 0.0, 'home' => 0, 'away' => 0],
         ];
-        $lineups = [];
-
-        if ($onCourt !== []) {
-            $this->pushGameFlowLineup($lineups, 0.0, $onCourt, $playersById);
-        }
 
         foreach ($events as $event) {
             $maxQuarter = max($maxQuarter, $event->quarter);
-
-            if ($event->type === StatType::Substitution && $event->player_id !== null && $event->outgoing_player_id !== null) {
-                $outgoingId = (int) $event->outgoing_player_id;
-                $onCourt = array_values(array_filter(
-                    $onCourt,
-                    fn (int $playerId): bool => $playerId !== $outgoingId,
-                ));
-                $incomingId = (int) $event->player_id;
-
-                if (! in_array($incomingId, $onCourt, true)) {
-                    $onCourt[] = $incomingId;
-                }
-
-                $this->pushGameFlowLineup(
-                    $lineups,
-                    $this->elapsedSecondsAt($event->quarter, $event->clock),
-                    $onCourt,
-                    $playersById,
-                );
-            }
-
             $scored = $event->type->points();
 
             if ($scored === 0 || $event->home_away === null) {
@@ -911,59 +1004,9 @@ class Game extends Model
         return [
             'points' => $points,
             'markers' => $markers,
-            'lineups' => $lineups,
             'maxX' => max($endX, $lastX, 1.0),
             'maxScore' => max($home, $away, 1),
         ];
-    }
-
-    /**
-     * @param  list<array{x: float, players: list<array{id: int, number: int|null, name: string, label: string}>}>  $lineups
-     * @param  list<int>  $onCourt
-     * @param  \Illuminate\Support\Collection<int, Player>  $playersById
-     */
-    private function pushGameFlowLineup(array &$lineups, float $x, array $onCourt, \Illuminate\Support\Collection $playersById): void
-    {
-        $players = [];
-
-        foreach ($onCourt as $playerId) {
-            $player = $playersById->get($playerId);
-
-            if (! $player instanceof Player) {
-                continue;
-            }
-
-            $number = $player->number;
-            $players[] = [
-                'id' => $player->id,
-                'number' => $number,
-                'name' => $player->name,
-                'label' => $number === null ? $player->name : '#'.$number.' '.$player->name,
-            ];
-        }
-
-        usort($players, function (array $left, array $right): int {
-            $byNumber = ($left['number'] ?? PHP_INT_MAX) <=> ($right['number'] ?? PHP_INT_MAX);
-
-            if ($byNumber !== 0) {
-                return $byNumber;
-            }
-
-            return strcasecmp($left['name'], $right['name']);
-        });
-
-        $marker = [
-            'x' => $x,
-            'players' => $players,
-        ];
-
-        if ($lineups !== [] && abs($lineups[array_key_last($lineups)]['x'] - $x) < 0.01) {
-            $lineups[array_key_last($lineups)] = $marker;
-
-            return;
-        }
-
-        $lineups[] = $marker;
     }
 
     public function score(): ?string

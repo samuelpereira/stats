@@ -463,7 +463,9 @@ function createCollectQueue() {
             }
 
             if (type === 'substitution') {
-                return ! this.local.gameStarted || this.local.periodOpen;
+                return ! this.local.gameStarted
+                    || this.local.periodOpen
+                    || this.local.awaitingQuarterStart;
             }
 
             return this.local.periodOpen;
@@ -801,10 +803,14 @@ function createCollectQueue() {
                 return;
             }
 
+            const clock = this.local.awaitingQuarterStart
+                ? this.openingClock()
+                : this.clock();
+
             await this.enqueue('substitution', {
                 playerIds: this.courtSelection.slice(),
                 quarter: this.local.quarter,
-                clock: this.clock(),
+                clock,
             });
             this.substituting = false;
             this.courtSelection = [];

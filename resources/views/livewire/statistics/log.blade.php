@@ -1,21 +1,37 @@
 @php
     $playerFilters = $playerFilters ?? [];
     $actionFilters = $actionFilters ?? [];
+    $actionGroups = [];
+
+    foreach ($actionFilters as $option) {
+        $actionGroups[$option['id']] = $option['keys'];
+    }
 @endphp
 <div
     x-data="{
-        playerFilter: '',
-        actionFilter: '',
+        filtersOpen: false,
+        selectedPlayers: [],
+        selectedActions: [],
+        actionGroups: @js($actionGroups),
         matches(line) {
             if (line.actionKey === 'quarter_started' || line.actionKey === 'quarter_ended') {
                 return true;
             }
 
-            const playerOk = this.playerFilter === ''
-                || (Array.isArray(line.playerKeys) && line.playerKeys.includes(this.playerFilter));
-            const actionOk = this.actionFilter === '' || line.actionKey === this.actionFilter;
+            const playerOk = this.selectedPlayers.length === 0
+                || (Array.isArray(line.playerKeys)
+                    && line.playerKeys.some((key) => this.selectedPlayers.includes(key)));
+            const actionOk = this.selectedActions.length === 0
+                || this.selectedActions.some((id) => (this.actionGroups[id] ?? []).includes(line.actionKey));
 
             return playerOk && actionOk;
+        },
+        activeFilterCount() {
+            return this.selectedPlayers.length + this.selectedActions.length;
+        },
+        clearFilters() {
+            this.selectedPlayers = [];
+            this.selectedActions = [];
         },
         isPeriodStart(line) {
             return line.actionKey === 'quarter_started';
@@ -29,31 +45,70 @@
     }"
     class="space-y-3"
 >
-    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <label class="block">
-            <span class="sr-only">{{ __('Player') }}</span>
-            <select
-                x-model="playerFilter"
-                class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900"
+    <div class="space-y-2">
+        <div class="flex flex-wrap items-center gap-2">
+            <button
+                type="button"
+                class="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-900"
+                @click="filtersOpen = ! filtersOpen"
+                :aria-expanded="filtersOpen ? 'true' : 'false'"
             >
-                <option value="">{{ __('All players') }}</option>
-                @foreach ($playerFilters as $option)
-                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
-                @endforeach
-            </select>
-        </label>
-        <label class="block">
-            <span class="sr-only">{{ __('Action') }}</span>
-            <select
-                x-model="actionFilter"
-                class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900"
-            >
-                <option value="">{{ __('All actions') }}</option>
-                @foreach ($actionFilters as $option)
-                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
-                @endforeach
-            </select>
-        </label>
+                <flux:icon name="funnel" class="size-3.5" />
+                {{ __('Filter') }}
+                <span
+                    x-show="activeFilterCount() > 0"
+                    x-cloak
+                    class="inline-flex min-w-4 items-center justify-center rounded-full bg-zinc-900 px-1 text-[10px] font-semibold text-white tabular-nums"
+                    x-text="activeFilterCount()"
+                ></span>
+            </button>
+            <button
+                type="button"
+                x-show="activeFilterCount() > 0"
+                x-cloak
+                class="text-xs font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline"
+                @click="clearFilters()"
+            >{{ __('Clear filters') }}</button>
+        </div>
+
+        <div
+            x-show="filtersOpen"
+            x-cloak
+            class="space-y-4 rounded-lg border border-zinc-200 bg-white p-3"
+        >
+            <div>
+                <p class="mb-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">{{ __('Player') }}</p>
+                <div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                    @foreach ($playerFilters as $option)
+                        <label class="flex items-center gap-2 rounded-md px-1 py-1 text-sm text-zinc-900 hover:bg-zinc-50">
+                            <input
+                                type="checkbox"
+                                value="{{ $option['value'] }}"
+                                x-model="selectedPlayers"
+                                class="size-4 rounded border-zinc-300 text-zinc-900"
+                            >
+                            <span class="min-w-0 truncate">{{ $option['label'] }}</span>
+                        </label>
+                    @endforeach
+                </div>
+            </div>
+            <div>
+                <p class="mb-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">{{ __('Action') }}</p>
+                <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                    @foreach ($actionFilters as $option)
+                        <label class="flex items-center gap-2 rounded-md px-1 py-1 text-sm text-zinc-900 hover:bg-zinc-50">
+                            <input
+                                type="checkbox"
+                                value="{{ $option['id'] }}"
+                                x-model="selectedActions"
+                                class="size-4 rounded border-zinc-300 text-zinc-900"
+                            >
+                            <span class="min-w-0 truncate">{{ $option['label'] }}</span>
+                        </label>
+                    @endforeach
+                </div>
+            </div>
+        </div>
     </div>
 
     <table class="w-full table-fixed text-left text-sm">

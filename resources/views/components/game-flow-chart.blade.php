@@ -1,11 +1,10 @@
 @props([
-    /** @var array{points: list<array{x: float, home: int, away: int}>, markers: list<array{x: float, label: string}>, lineups: list<array{x: float, players: list<array{id: int, number: int|null, name: string, label: string}>}>, maxX: float, maxScore: int} */
+    /** @var array{points: list<array{x: float, home: int, away: int}>, markers: list<array{x: float, label: string}>, maxX: float, maxScore: int} */
     'flow',
     'homeColor',
     'awayColor',
     'homeName',
     'awayName',
-    'lineupColor',
 ])
 
 @php
@@ -26,8 +25,6 @@
 
     $mapX = static fn (float $x): float => $padL + ($x / $maxX) * $plotW;
     $mapY = static fn (int $score): float => $padT + $plotH - ($score / $maxY) * $plotH;
-    $axisLeftPercent = ($padL / $width) * 100;
-    $axisWidthPercent = ($plotW / $width) * 100;
 
     $homePath = [];
     $awayPath = [];
@@ -46,15 +43,9 @@
     if ($yTicks[array_key_last($yTicks)] !== $maxY) {
         $yTicks[] = $maxY;
     }
-
-    $lineups = $flow['lineups'] ?? [];
 @endphp
 
-<div
-    {{ $attributes->merge(['class' => 'w-full']) }}
-    x-data="{ openLineup: null }"
-    @click.outside="openLineup = null"
->
+<div {{ $attributes->merge(['class' => 'w-full']) }}>
     <div class="mb-3 flex flex-wrap items-center justify-center gap-4 text-sm">
         <span class="inline-flex items-center gap-2 font-medium text-zinc-800">
             <span class="size-2.5 rounded-full" style="background-color: {{ $homeColor }}"></span>
@@ -147,46 +138,4 @@
             @endif
         @endforeach
     </svg>
-
-    @if ($lineups !== [])
-        <div class="relative mt-1" style="margin-left: {{ $axisLeftPercent }}%; width: {{ $axisWidthPercent }}%;">
-            <p class="mb-2 text-center text-xs text-zinc-500">{{ __('Tap a marker to see who was on court') }}</p>
-            <div class="relative h-10">
-                @foreach ($lineups as $index => $lineup)
-                    @php($leftPercent = (min((float) $lineup['x'], $maxX) / $maxX) * 100)
-                    <div class="absolute top-0 -translate-x-1/2" style="left: {{ $leftPercent }}%">
-                        <button
-                            type="button"
-                            class="flex flex-col items-center gap-1 rounded-md px-1 py-0.5 text-zinc-700 hover:bg-zinc-100"
-                            @click.stop="openLineup = openLineup === {{ $index }} ? null : {{ $index }}"
-                            :aria-expanded="openLineup === {{ $index }} ? 'true' : 'false'"
-                            aria-label="{{ __('On court') }}"
-                        >
-                            <span
-                                class="block size-2.5 rotate-45 border border-white shadow-sm"
-                                style="background-color: {{ $lineupColor }}"
-                            ></span>
-                            <span class="text-[10px] font-semibold tabular-nums text-zinc-500">
-                                {{ $index === 0 ? __('Starting five') : __('sub') }}
-                            </span>
-                        </button>
-
-                        <div
-                            x-show="openLineup === {{ $index }}"
-                            x-cloak
-                            class="absolute bottom-full left-1/2 z-20 mb-2 w-40 -translate-x-1/2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left shadow-lg"
-                            @click.stop
-                        >
-                            <p class="mb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">{{ __('On court') }}</p>
-                            <ul class="space-y-0.5">
-                                @foreach ($lineup['players'] as $player)
-                                    <li class="truncate text-xs font-medium text-zinc-900">{{ $player['label'] }}</li>
-                                @endforeach
-                            </ul>
-                        </div>
-                    </div>
-                @endforeach
-            </div>
-        </div>
-    @endif
 </div>

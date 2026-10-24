@@ -130,10 +130,10 @@ class ApplyCollectedAction
      */
     private function substitute(Game $game, array $payload): void
     {
-        $this->assertPeriodOpen($game);
+        $this->assertCanSubstitute($game);
 
         $clock = $this->clock($payload['clock'] ?? null);
-        $quarter = $this->quarter($game, $payload['quarter'] ?? null);
+        $quarter = $this->substitutionQuarter($game, $payload['quarter'] ?? null);
         $playerIds = $payload['playerIds'] ?? null;
 
         if (! is_array($playerIds) || count($playerIds) !== 5) {
@@ -323,6 +323,47 @@ class ApplyCollectedAction
         if (! $marker instanceof GameEvent || $marker->type !== StatType::QuarterStarted) {
             $this->invalid('period', __('The collected action is not valid.'));
         }
+    }
+
+    private function assertCanSubstitute(Game $game): void
+    {
+        $marker = $this->latestPeriodMarker($game);
+
+        if (! $marker instanceof GameEvent) {
+            $this->invalid('period', __('The collected action is not valid.'));
+        }
+
+        if ($marker->type === StatType::QuarterStarted || $marker->type === StatType::QuarterEnded) {
+            return;
+        }
+
+        $this->invalid('period', __('The collected action is not valid.'));
+    }
+
+    private function substitutionQuarter(Game $game, mixed $quarter): int
+    {
+        $selected = $this->requiredInt($quarter, 'quarter');
+        $marker = $this->latestPeriodMarker($game);
+
+        if (! $marker instanceof GameEvent) {
+            return $selected;
+        }
+
+        if ($marker->type === StatType::QuarterStarted) {
+            if ($selected !== $marker->quarter) {
+                $this->invalid('quarter', __('The collected action is not valid.'));
+            }
+
+            return $marker->quarter;
+        }
+
+        $expected = $marker->quarter + 1;
+
+        if ($selected !== $expected) {
+            $this->invalid('quarter', __('The collected action is not valid.'));
+        }
+
+        return $expected;
     }
 
     private function latestPeriodMarker(Game $game): ?GameEvent

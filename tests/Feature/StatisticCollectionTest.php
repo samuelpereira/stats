@@ -2097,6 +2097,102 @@ test('lineup before the tip-off opens the squad already chosen for the game', fu
     expect(GameEvent::query()->where('type', StatType::Substitution)->count())->toBe(0);
 });
 
+test('a substitution can be recorded between periods before the next tip-off', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $game = Game::factory()->create([
+        'team_id' => $team->id,
+        'quarter_minutes' => 10,
+    ]);
+    $starters = Player::factory()->count(5)->create(['team_id' => $team->id]);
+    $bench = Player::factory()->create(['team_id' => $team->id, 'name' => 'Halftime Bench']);
+
+    foreach ($starters as $starter) {
+        $game->players()->attach($starter->id, ['starter' => true]);
+    }
+    $game->players()->attach($bench->id, ['starter' => false]);
+
+    $screen = statisticsRecord($member, $game, false)
+        ->call('recordQuarterStart')
+        ->set('clock', '00:00')
+        ->call('endQuarter')
+        ->assertSet('awaitingQuarterStart', true)
+        ->assertSet('quarter', 2);
+
+    $nextCourt = [
+        $starters[1]->id,
+        $starters[2]->id,
+        $starters[3]->id,
+        $starters[4]->id,
+        $bench->id,
+    ];
+
+    $screen->call('select', StatType::Substitution->value)
+        ->assertSet('substituting', true)
+        ->set('courtSelection', $nextCourt)
+        ->call('confirmSubstitutions')
+        ->assertHasNoErrors()
+        ->assertSet('substituting', false)
+        ->assertSet('awaitingQuarterStart', true)
+        ->assertSet('clock', '10:00');
+
+    $event = GameEvent::query()->where('type', StatType::Substitution)->first();
+
+    expect($event)->not->toBeNull()
+        ->and($event->quarter)->toBe(2)
+        ->and($event->clock)->toBe('10:00')
+        ->and($event->player_id)->toBe($bench->id)
+        ->and($event->outgoing_player_id)->toBe($starters[0]->id);
+});
+
+test('undo removes a substitution recorded between periods', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $game = Game::factory()->create([
+        'team_id' => $team->id,
+        'quarter_minutes' => 10,
+    ]);
+    $starters = Player::factory()->count(5)->create(['team_id' => $team->id]);
+    $bench = Player::factory()->create(['team_id' => $team->id, 'name' => 'Undo Bench']);
+
+    foreach ($starters as $starter) {
+        $game->players()->attach($starter->id, ['starter' => true]);
+    }
+    $game->players()->attach($bench->id, ['starter' => false]);
+
+    $nextCourt = [
+        $starters[1]->id,
+        $starters[2]->id,
+        $starters[3]->id,
+        $starters[4]->id,
+        $bench->id,
+    ];
+
+    $screen = statisticsRecord($member, $game, false)
+        ->call('recordQuarterStart')
+        ->set('clock', '00:00')
+        ->call('endQuarter')
+        ->call('select', StatType::Substitution->value)
+        ->set('courtSelection', $nextCourt)
+        ->call('confirmSubstitutions')
+        ->assertSet('canUndo', true)
+        ->assertSet('awaitingQuarterStart', true);
+
+    expect(GameEvent::query()->where('type', StatType::Substitution)->count())->toBe(1);
+
+    $screen->call('undo')
+        ->assertSet('canUndo', false)
+        ->assertSet('awaitingQuarterStart', true);
+
+    expect(GameEvent::query()->where('type', StatType::Substitution)->count())->toBe(0)
+        ->and(GameEvent::query()->where('type', StatType::QuarterEnded)->count())->toBe(1)
+        ->and($game->fresh()->lineupState('10:00', false)['court'])->toEqualCanonicalizing(
+            $starters->pluck('id')->all(),
+        );
+});
+
 test('back from the players in this game returns to the dashboard', function () {
     $club = Club::factory()->create();
     $member = User::factory()->memberOf($club)->create();
@@ -2233,13 +2329,21 @@ test('the statistics log exposes client filters for player and action', function
 
     $playerFilters = collect($screen->instance()->logPlayerFilters);
     $actionFilters = collect($screen->instance()->logActionFilters);
+    $twoPoint = $actionFilters->firstWhere('id', StatType::TwoPointMade->value);
+    $labels = $actionFilters->pluck('label')->all();
 
     expect($playerFilters->firstWhere('value', 'player:'.$player->id)['label'] ?? null)->toBe('#7 Filter Player')
         ->and($playerFilters->firstWhere('value', 'opponent')['label'] ?? null)->toBe('Filter United')
-        ->and($actionFilters->firstWhere('value', StatType::Steal->value)['label'] ?? null)->toBe(__(StatType::Steal->logLabel()));
+        ->and($actionFilters->firstWhere('id', StatType::Steal->value)['label'] ?? null)->toBe(__(StatType::Steal->logLabel()))
+        ->and($twoPoint['keys'] ?? null)->toBe([
+            StatType::TwoPointMade->value,
+            StatType::TwoPointMissed->value,
+        ])
+        ->and($actionFilters->firstWhere('id', StatType::TwoPointMissed->value))->toBeNull()
+        ->and($labels)->toBe(collect($labels)->sort(fn (string $left, string $right): int => strcasecmp($left, $right))->values()->all());
 
-    $screen->assertSee(__('All players'))
-        ->assertSee(__('All actions'))
+    $screen->assertSee(__('Filter'))
+        ->assertSee(__('Clear filters'))
         ->assertSee('player:'.$player->id, false)
         ->assertSee(StatType::Steal->value, false);
 });

@@ -160,7 +160,6 @@ test('the statistics button opens the game box score', function () {
         ->assertSee('Matchup')
         ->assertSee('Game flow')
         ->assertSee('Score progress through the game')
-        ->assertSee('Tap a marker to see who was on court')
         ->assertViewHas('gameFlow', fn (?array $flow): bool => $flow !== null
             && $flow['points'][0] === ['x' => 0.0, 'home' => 0, 'away' => 0]
             && $flow['points'][1]['home'] === 2
@@ -168,8 +167,7 @@ test('the statistics button opens the game box score', function () {
             && $flow['points'][2]['home'] === 2
             && $flow['points'][2]['away'] === 3
             && $flow['markers'][0]['label'] === 'Q1'
-            && $flow['maxScore'] === 3
-            && isset($flow['lineups']))
+            && $flow['maxScore'] === 3)
         ->assertSee('Shot Charts')
         ->assertSee('Court locations for shot makes and misses')
         ->assertSee('Q1')
@@ -264,9 +262,10 @@ test('plus minus counts the margin only while that player is on the court', func
         ->assertSee('-3');
 });
 
-test('game flow builds cumulative home and away scores over elapsed time', function () {
+test('lineup history lists the court five at period starts and substitutions', function () {
     $club = Club::factory()->create();
     $team = Team::factory()->create(['club_id' => $club->id]);
+    $member = User::factory()->memberOf($club)->withTeams($team)->create();
     $game = Game::factory()->create([
         'team_id' => $team->id,
         'home_away' => HomeAway::Home,
@@ -284,7 +283,6 @@ test('game flow builds cumulative home and away scores over elapsed time', funct
         'name' => 'Bench In',
         'number' => 12,
     ]);
-    $outgoing = $starters[0];
 
     foreach ($starters as $starter) {
         $game->players()->attach($starter->id, ['starter' => true]);
@@ -293,20 +291,80 @@ test('game flow builds cumulative home and away scores over elapsed time', funct
 
     GameEvent::factory()->create([
         'game_id' => $game->id,
-        'player_id' => $outgoing->id,
-        'home_away' => HomeAway::Home,
-        'type' => StatType::TwoPointMade,
+        'player_id' => null,
+        'home_away' => null,
+        'type' => StatType::QuarterStarted,
         'quarter' => 1,
-        'clock' => '09:00',
+        'clock' => '10:00',
     ]);
     GameEvent::factory()->create([
         'game_id' => $game->id,
         'player_id' => $bench->id,
-        'outgoing_player_id' => $outgoing->id,
+        'outgoing_player_id' => $starters[0]->id,
         'home_away' => HomeAway::Home,
         'type' => StatType::Substitution,
         'quarter' => 1,
         'clock' => '08:00',
+    ]);
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => null,
+        'home_away' => null,
+        'type' => StatType::QuarterEnded,
+        'quarter' => 1,
+        'clock' => '00:00',
+    ]);
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => null,
+        'home_away' => null,
+        'type' => StatType::QuarterStarted,
+        'quarter' => 2,
+        'clock' => '10:00',
+    ]);
+
+    $history = $game->lineupHistory();
+
+    expect($history)->toHaveCount(3)
+        ->and($history[0]['period'])->toBe('Q1')
+        ->and($history[0]['clock'])->toBe('10:00')
+        ->and($history[0]['reason'])->toBe('period_start')
+        ->and(collect($history[0]['players'])->pluck('number')->all())->toBe([1, 2, 3, 4, 5])
+        ->and($history[1]['period'])->toBe('Q1')
+        ->and($history[1]['clock'])->toBe('08:00')
+        ->and($history[1]['reason'])->toBe('substitution')
+        ->and(collect($history[1]['players'])->pluck('number')->all())->toBe([2, 3, 4, 5, 12])
+        ->and($history[2]['period'])->toBe('Q2')
+        ->and($history[2]['clock'])->toBe('10:00')
+        ->and($history[2]['reason'])->toBe('period_start')
+        ->and(collect($history[2]['players'])->pluck('number')->all())->toBe([2, 3, 4, 5, 12]);
+
+    Livewire::actingAs($member)
+        ->test(StatisticsShow::class, ['game' => $game])
+        ->assertSee('Lineups')
+        ->assertSee('Court five at each period start and substitution')
+        ->assertSee('#12 Bench In')
+        ->assertViewHas('lineupHistory', fn (array $rows): bool => count($rows) === 3);
+});
+
+test('game flow builds cumulative home and away scores over elapsed time', function () {
+    $club = Club::factory()->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $game = Game::factory()->create([
+        'team_id' => $team->id,
+        'home_away' => HomeAway::Home,
+        'quarter_minutes' => 10,
+    ]);
+    $player = Player::factory()->create(['team_id' => $team->id]);
+    $game->players()->attach($player->id, ['starter' => true]);
+
+    GameEvent::factory()->create([
+        'game_id' => $game->id,
+        'player_id' => $player->id,
+        'home_away' => HomeAway::Home,
+        'type' => StatType::TwoPointMade,
+        'quarter' => 1,
+        'clock' => '09:00',
     ]);
     GameEvent::factory()->create([
         'game_id' => $game->id,
@@ -318,7 +376,7 @@ test('game flow builds cumulative home and away scores over elapsed time', funct
     ]);
     GameEvent::factory()->create([
         'game_id' => $game->id,
-        'player_id' => $bench->id,
+        'player_id' => $player->id,
         'home_away' => HomeAway::Home,
         'type' => StatType::FreeThrowMade,
         'quarter' => 2,
@@ -339,12 +397,7 @@ test('game flow builds cumulative home and away scores over elapsed time', funct
         ->and($flow['points'][3]['away'])->toBe(3)
         ->and(collect($flow['markers'])->pluck('label')->all())->toBe(['Q1', 'Q2'])
         ->and($flow['maxX'])->toBe(1200.0)
-        ->and($flow['maxScore'])->toBe(3)
-        ->and($flow['lineups'])->toHaveCount(2)
-        ->and($flow['lineups'][0]['x'])->toBe(0.0)
-        ->and(collect($flow['lineups'][0]['players'])->pluck('number')->all())->toBe([1, 2, 3, 4, 5])
-        ->and($flow['lineups'][1]['x'])->toBe(120.0)
-        ->and(collect($flow['lineups'][1]['players'])->pluck('number')->all())->toBe([2, 3, 4, 5, 12]);
+        ->and($flow['maxScore'])->toBe(3);
 
     expect(Game::factory()->create(['team_id' => $team->id])->gameFlow())->toBeNull();
 });
