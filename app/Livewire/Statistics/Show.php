@@ -86,7 +86,6 @@ class Show extends Component
         $boxScore = $this->game->boxScore();
         $pointsByQuarter = $this->game->pointsByQuarter();
         $weAreHome = $this->game->home_away === HomeAway::Home;
-        $periodFouls = $this->game->teamFoulsForPeriod($this->game->openPeriod());
 
         $periods = [];
         $homeTotal = 0;
@@ -108,6 +107,7 @@ class Show extends Component
         $awayName = $weAreHome ? $this->game->opponent : $this->game->team->name;
         [$courtPlayers, $benchPlayers] = $this->splitSquad($boxScore['players'], $boxScore['court']);
         $boxScore['players'] = $this->sortBoxScorePlayers($boxScore['players']);
+        $defaultColors = Game::defaultAttributes();
 
         return view('livewire.statistics.show', [
             'boxScore' => $boxScore,
@@ -116,16 +116,14 @@ class Show extends Component
             'periods' => $periods,
             'homeTotal' => $homeTotal,
             'awayTotal' => $awayTotal,
-            'homePeriodFouls' => $periodFouls['home'],
-            'awayPeriodFouls' => $periodFouls['away'],
             'matchups' => $this->matchups($homeLine, $awayLine),
             'shotChartsByPeriod' => $this->filteredShotChartsByPeriod(),
             'gameFlow' => $this->game->gameFlow(),
             'lineupHistory' => $this->game->lineupHistory(),
             'homeShotChartPlayers' => $this->game->shotChartPlayers(HomeAway::Home),
             'awayShotChartPlayers' => $this->game->shotChartPlayers(HomeAway::Away),
-            'homeColor' => $this->game->home_color->hex(),
-            'awayColor' => $this->game->away_color->hex(),
+            'homeColor' => $defaultColors['home_color']->hex(),
+            'awayColor' => $defaultColors['away_color']->hex(),
             'teamName' => $this->game->team->name,
             'opponentName' => $this->game->opponent,
             'homeName' => $homeName,
@@ -197,8 +195,8 @@ class Show extends Component
     }
 
     /**
-     * @param  array{points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int}  $home
-     * @param  array{points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int}  $away
+     * @param  array{points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int, technicalFouls: int}  $home
+     * @param  array{points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int, technicalFouls: int}  $away
      * @return list<array{label: string, left: string, right: string, leftShare: float, rightShare: float}>
      */
     private function matchups(array $home, array $away): array
@@ -211,18 +209,19 @@ class Show extends Component
         $awayReb = $away['offensiveRebounds'] + $away['defensiveRebounds'];
 
         return [
-            $this->shootingMatchup('FGM-A', $homeFgMade, $homeFgAttempts, $awayFgMade, $awayFgAttempts),
-            $this->shootingMatchup('3PM-A', $home['threeMade'], $home['threeAttempts'], $away['threeMade'], $away['threeAttempts']),
-            $this->shootingMatchup('FTM-A', $home['freeMade'], $home['freeAttempts'], $away['freeMade'], $away['freeAttempts']),
-            $this->countMatchup('REB', $homeReb, $awayReb),
-            $this->countMatchup('OREB', $home['offensiveRebounds'], $away['offensiveRebounds']),
-            $this->countMatchup('DREB', $home['defensiveRebounds'], $away['defensiveRebounds']),
-            $this->countMatchup('AST', $home['assists'], $away['assists']),
-            $this->countMatchup('STL', $home['steals'], $away['steals']),
-            $this->countMatchup('BLK', $home['blocks'], $away['blocks']),
-            $this->countMatchup('TO', $home['turnovers'], $away['turnovers']),
-            $this->countMatchup('PF', $home['fouls'], $away['fouls']),
             $this->countMatchup('PTS', $home['points'], $away['points']),
+            $this->shootingMatchup('FG (%)', $homeFgMade, $homeFgAttempts, $awayFgMade, $awayFgAttempts),
+            $this->shootingMatchup('2P (%)', $home['twoMade'], $home['twoAttempts'], $away['twoMade'], $away['twoAttempts']),
+            $this->shootingMatchup('3P (%)', $home['threeMade'], $home['threeAttempts'], $away['threeMade'], $away['threeAttempts']),
+            $this->shootingMatchup('FT (%)', $home['freeMade'], $home['freeAttempts'], $away['freeMade'], $away['freeAttempts']),
+            $this->countMatchup('DFR', $home['defensiveRebounds'], $away['defensiveRebounds']),
+            $this->countMatchup('OFR', $home['offensiveRebounds'], $away['offensiveRebounds']),
+            $this->countMatchup('TR', $homeReb, $awayReb),
+            $this->countMatchup('AST', $home['assists'], $away['assists']),
+            $this->countMatchup('BLK', $home['blocks'], $away['blocks']),
+            $this->countMatchup('STL', $home['steals'], $away['steals']),
+            $this->countMatchup('TO', $home['turnovers'], $away['turnovers']),
+            $this->countMatchup('PF+TF', $home['fouls'] + $home['technicalFouls'], $away['fouls'] + $away['technicalFouls']),
         ];
     }
 

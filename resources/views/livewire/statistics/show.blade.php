@@ -58,8 +58,7 @@
 
         <div @class(['w-full rounded-lg border border-zinc-200 bg-white shadow-sm', 'mt-4' => $shared])>
             <div class="border-b border-zinc-200 px-4 py-3 sm:px-6">
-                <h2 class="text-base font-semibold">{{ __('Breakdown') }}</h2>
-                <p class="text-sm text-zinc-500">{{ __('Stat breakdown by time period') }}</p>
+                <h2 class="text-base font-semibold">{{ __('Box score') }}</h2>
             </div>
             <div class="overflow-x-auto">
             <table class="w-full text-xs">
@@ -70,7 +69,6 @@
                             <th class="px-2 py-2 text-center font-medium">{{ __($period['label']) }}</th>
                         @endforeach
                         <th class="bg-zinc-50 px-2 py-2 text-center font-medium">{{ __('T') }}</th>
-                        <th class="px-2 py-2 text-center font-medium">{{ __('F') }}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -94,7 +92,6 @@
                             <td class="px-2 py-3 text-center tabular-nums">{{ $period['home'] }}</td>
                         @endforeach
                         <td class="bg-zinc-50 px-2 py-3 text-center font-bold tabular-nums">{{ $homeTotal }}</td>
-                        <td class="px-2 py-3 text-center tabular-nums">{{ $homePeriodFouls }}</td>
                     </tr>
                     <tr>
                         <td class="py-3 pr-3 pl-4 sm:pl-6">
@@ -116,7 +113,6 @@
                             <td class="px-2 py-3 text-center tabular-nums">{{ $period['away'] }}</td>
                         @endforeach
                         <td class="bg-zinc-50 px-2 py-3 text-center font-bold tabular-nums">{{ $awayTotal }}</td>
-                        <td class="px-2 py-3 text-center tabular-nums">{{ $awayPeriodFouls }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -192,7 +188,7 @@
 
         <div class="mt-4 rounded-lg border border-zinc-200 bg-white shadow-sm">
             <div class="border-b border-zinc-200 px-4 py-3 sm:px-6">
-                <h2 class="text-base font-semibold">{{ __('Box score') }}</h2>
+                <h2 class="text-base font-semibold">{{ __('Individual statistics') }}</h2>
             </div>
             @include('livewire.statistics.partials.box-score-table', [
                 'boxScore' => $boxScore,
@@ -207,7 +203,6 @@
             <div class="mt-4 rounded-lg border border-zinc-200 bg-white px-4 py-4 shadow-sm sm:px-6">
                 <div class="mb-2">
                     <h2 class="text-base font-semibold">{{ __('Game flow') }}</h2>
-                    <p class="text-sm text-zinc-500">{{ __('Score progress through the game') }}</p>
                 </div>
                 <x-game-flow-chart
                     :flow="$gameFlow"
@@ -262,7 +257,6 @@
                 <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
                     <div>
                         <h2 class="text-base font-semibold">{{ __('Shot Charts') }}</h2>
-                        <p class="text-sm text-zinc-500">{{ __('Court locations for shot makes and misses') }}</p>
                     </div>
                     <div class="flex items-center gap-4 text-xs text-zinc-500">
                         <span class="inline-flex items-center gap-2">
