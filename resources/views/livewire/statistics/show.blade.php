@@ -263,7 +263,8 @@
                                         <div class="flex gap-1">
                                             @foreach ($line['players'] as $player)
                                                 <span
-                                                    class="flex h-7 min-w-7 items-center justify-center rounded-md bg-amber-500 px-1 text-xs font-bold tabular-nums text-white"
+                                                    class="flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-xs font-bold tabular-nums ring-1 ring-black/10 ring-inset"
+                                                    style="background-color: {{ $teamColor }}; color: {{ $teamTextColor }}"
                                                     title="{{ $player['label'] }}"
                                                 >{{ $player['number'] ?? mb_substr($player['name'], 0, 2) }}</span>
                                             @endforeach

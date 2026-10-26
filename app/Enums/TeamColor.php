@@ -64,4 +64,12 @@ enum TeamColor: string
             self::Gray => '#9a9a9a',
         };
     }
+
+    public function textHex(): string
+    {
+        return match ($this) {
+            self::White, self::Yellow, self::Gray => '#111111',
+            default => '#ffffff',
+        };
+    }
 }

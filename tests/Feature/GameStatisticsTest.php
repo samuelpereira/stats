@@ -3,6 +3,7 @@
 use App\Enums\GameStatus;
 use App\Enums\HomeAway;
 use App\Enums\StatType;
+use App\Enums\TeamColor;
 use App\Livewire\Statistics\Show as StatisticsShow;
 use App\Models\Club;
 use App\Models\Game;
@@ -333,6 +334,26 @@ test('lineup stats total time, points and shooting for each court five', functio
         ->assertViewHas('lineupStats', fn (array $rows): bool => $rows[0]['minutes'] === '3:00')
         ->call('sortLineupsBy', 'unknown')
         ->assertSet('lineupSort', 'freeMade');
+});
+
+test('lineup chips use our home or away colour', function () {
+    $club = Club::factory()->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $member = User::factory()->memberOf($club)->withTeams($team)->create();
+
+    foreach ([[HomeAway::Home, TeamColor::Purple], [HomeAway::Away, TeamColor::Yellow]] as [$side, $expected]) {
+        $game = Game::factory()->create([
+            'team_id' => $team->id,
+            'home_away' => $side,
+            'home_color' => TeamColor::Purple,
+            'away_color' => TeamColor::Yellow,
+        ]);
+
+        Livewire::actingAs($member)
+            ->test(StatisticsShow::class, ['game' => $game])
+            ->assertViewHas('teamColor', $expected->hex())
+            ->assertViewHas('teamTextColor', $expected->textHex());
+    }
 });
 
 test('lineup stats ignore fives that only exist between opening-clock substitutions', function () {

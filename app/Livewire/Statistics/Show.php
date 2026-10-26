@@ -112,6 +112,7 @@ class Show extends Component
         $awayName = $weAreHome ? $this->game->opponent : $this->game->team->name;
         [$courtPlayers, $benchPlayers] = $this->splitSquad($boxScore['players'], $boxScore['court']);
         $boxScore['players'] = $this->sortBoxScorePlayers($boxScore['players']);
+        $teamColor = $weAreHome ? $this->game->home_color : $this->game->away_color;
 
         return view('livewire.statistics.show', [
             'boxScore' => $boxScore,
@@ -130,6 +131,8 @@ class Show extends Component
             'awayShotChartPlayers' => $this->game->shotChartPlayers(HomeAway::Away),
             'homeColor' => $this->game->home_color->hex(),
             'awayColor' => $this->game->away_color->hex(),
+            'teamColor' => $teamColor->hex(),
+            'teamTextColor' => $teamColor->textHex(),
             'teamName' => $this->game->team->name,
             'opponentName' => $this->game->opponent,
             'homeName' => $homeName,
