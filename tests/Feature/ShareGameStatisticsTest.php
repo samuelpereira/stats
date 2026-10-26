@@ -49,7 +49,7 @@ test('a public link shows the game statistics without signing in', function () {
         ->assertDontSee(__('Back'))
         ->assertDontSee(__('Bench'))
         ->assertSee(__('Lineups'))
-        ->assertSee(__('Period start'))
+        ->assertSee(__('Court five'))
         ->assertDontSee(__('Stop sharing'))
         ->assertSeeInOrder(['Box score', 'Matchup', 'Lineups']);
 });

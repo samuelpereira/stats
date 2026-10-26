@@ -712,27 +712,33 @@ class Game extends Model
     }
 
     /**
-     * Court fives over the game: a row at each period start and after each substitution.
+     * Totals for each distinct court five: time together, points scored and conceded,
+     * and our shooting while that five was on court.
      *
      * @return list<array{
-     *     quarter: int,
-     *     period: string,
-     *     clock: string,
-     *     reason: 'period_start'|'substitution',
-     *     players: list<array{id: int, number: int|null, name: string, label: string}>
+     *     players: list<array{id: int, number: int|null, name: string, label: string}>,
+     *     seconds: int,
+     *     minutes: string,
+     *     points: int,
+     *     opponentPoints: int,
+     *     plusMinus: int,
+     *     twoMade: int,
+     *     twoAttempts: int,
+     *     threeMade: int,
+     *     threeAttempts: int,
+     *     freeMade: int,
+     *     freeAttempts: int
      * }>
      */
-    public function lineupHistory(): array
+    public function lineupStats(): array
     {
         $playersById = $this->players()
-            ->orderBy('number')
-            ->orderBy('name')
             ->get(['players.id', 'players.number', 'players.name'])
             ->keyBy('id');
 
         $onCourt = [];
 
-        foreach ($this->players()->wherePivot('starter', true)->orderBy('number')->pluck('players.id') as $playerId) {
+        foreach ($this->players()->wherePivot('starter', true)->pluck('players.id') as $playerId) {
             $onCourt[] = (int) $playerId;
         }
 
@@ -740,114 +746,194 @@ class Game extends Model
             return [];
         }
 
-        $history = [];
         $events = $this->events()
             ->chronological()
-            ->get(['type', 'quarter', 'clock', 'player_id', 'outgoing_player_id']);
+            ->get(['id', 'type', 'quarter', 'clock', 'home_away', 'player_id', 'outgoing_player_id']);
+
+        $lineups = [];
+        $running = false;
+        $openedAt = 0;
+
+        $track = function (int $mark) use (&$lineups, &$onCourt, &$openedAt): void {
+            $key = $this->lineupKey($onCourt);
+            $lineups[$key] ??= $this->emptyLineupLine($onCourt);
+            $lineups[$key]['seconds'] += max(0, $openedAt - $mark);
+            $openedAt = $mark;
+        };
 
         foreach ($events as $event) {
+            $mark = self::clockToSeconds($event->clock);
+
             if ($event->type === StatType::QuarterStarted) {
-                $this->putLineupHistoryRow($history, $this->lineupHistoryRow(
-                    $event->quarter,
-                    $event->clock,
-                    'period_start',
+                $running = true;
+                $openedAt = $mark;
+
+                continue;
+            }
+
+            if ($event->type === StatType::QuarterEnded) {
+                if ($running) {
+                    $track($mark);
+                }
+
+                $running = false;
+
+                continue;
+            }
+
+            if ($event->type === StatType::Substitution) {
+                if ($event->player_id === null || $event->outgoing_player_id === null) {
+                    continue;
+                }
+
+                if ($running) {
+                    $track($mark);
+                }
+
+                $outgoingId = (int) $event->outgoing_player_id;
+                $incomingId = (int) $event->player_id;
+                $onCourt = array_values(array_filter(
                     $onCourt,
-                    $playersById,
+                    fn (int $playerId): bool => $playerId !== $outgoingId,
                 ));
 
+                if (! in_array($incomingId, $onCourt, true)) {
+                    $onCourt[] = $incomingId;
+                }
+
                 continue;
             }
 
-            if ($event->type !== StatType::Substitution || $event->player_id === null || $event->outgoing_player_id === null) {
+            if ($event->home_away === null || $event->type === StatType::Timeout) {
                 continue;
             }
 
-            $outgoingId = (int) $event->outgoing_player_id;
-            $onCourt = array_values(array_filter(
-                $onCourt,
-                fn (int $playerId): bool => $playerId !== $outgoingId,
-            ));
-            $incomingId = (int) $event->player_id;
-
-            if (! in_array($incomingId, $onCourt, true)) {
-                $onCourt[] = $incomingId;
-            }
-
-            $this->putLineupHistoryRow($history, $this->lineupHistoryRow(
-                $event->quarter,
-                $event->clock,
-                'substitution',
-                $onCourt,
-                $playersById,
-            ));
+            $key = $this->lineupKey($onCourt);
+            $lineups[$key] ??= $this->emptyLineupLine($onCourt);
+            $this->addLineupStat($lineups[$key], $event);
         }
 
-        return $history;
+        $latest = $events->last();
+
+        if ($running && $latest instanceof GameEvent) {
+            $track(self::clockToSeconds($latest->clock));
+        }
+
+        $currentKey = $this->lineupKey($onCourt);
+        $lineups[$currentKey] ??= $this->emptyLineupLine($onCourt);
+        $rows = [];
+
+        foreach ($lineups as $key => $line) {
+            if ($key !== $currentKey && $line['seconds'] === 0 && $line['points'] === 0 && $line['opponentPoints'] === 0 && $line['twoAttempts'] + $line['threeAttempts'] + $line['freeAttempts'] === 0) {
+                continue;
+            }
+
+            $rows[] = [
+                'players' => $this->lineupPlayers($line['ids'], $playersById),
+                'seconds' => $line['seconds'],
+                'minutes' => self::formatPlayed($line['seconds']),
+                'points' => $line['points'],
+                'opponentPoints' => $line['opponentPoints'],
+                'plusMinus' => $line['points'] - $line['opponentPoints'],
+                'twoMade' => $line['twoMade'],
+                'twoAttempts' => $line['twoAttempts'],
+                'threeMade' => $line['threeMade'],
+                'threeAttempts' => $line['threeAttempts'],
+                'freeMade' => $line['freeMade'],
+                'freeAttempts' => $line['freeAttempts'],
+            ];
+        }
+
+        usort($rows, fn (array $left, array $right): int => [$right['seconds'], $right['points']] <=> [$left['seconds'], $left['points']]);
+
+        return $rows;
     }
 
     /**
-     * Same period and clock collapse to one row. Tip-off keeps "period start" when
-     * substitutions share that opening clock.
-     *
-     * @param  list<array{quarter: int, period: string, clock: string, reason: 'period_start'|'substitution', players: list<array{id: int, number: int|null, name: string, label: string}>}>  $history
-     * @param  array{quarter: int, period: string, clock: string, reason: 'period_start'|'substitution', players: list<array{id: int, number: int|null, name: string, label: string}>}  $row
+     * @param  list<int>  $onCourt
      */
-    private function putLineupHistoryRow(array &$history, array $row): void
+    private function lineupKey(array $onCourt): string
     {
-        $lastKey = array_key_last($history);
-        $last = $lastKey === null ? null : $history[$lastKey];
+        $ids = $onCourt;
+        sort($ids);
 
-        if (
-            is_array($last)
-            && $last['quarter'] === $row['quarter']
-            && $last['clock'] === $row['clock']
-        ) {
-            if ($last['reason'] === 'period_start' || $row['reason'] === 'period_start') {
-                $row['reason'] = 'period_start';
-            }
+        return implode('-', $ids);
+    }
 
-            $history[$lastKey] = $row;
+    /**
+     * @param  list<int>  $onCourt
+     * @return array{ids: list<int>, seconds: int, points: int, opponentPoints: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int}
+     */
+    private function emptyLineupLine(array $onCourt): array
+    {
+        return [
+            'ids' => $onCourt,
+            'seconds' => 0,
+            'points' => 0,
+            'opponentPoints' => 0,
+            'twoMade' => 0,
+            'twoAttempts' => 0,
+            'threeMade' => 0,
+            'threeAttempts' => 0,
+            'freeMade' => 0,
+            'freeAttempts' => 0,
+        ];
+    }
+
+    /**
+     * @param  array{ids: list<int>, seconds: int, points: int, opponentPoints: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int}  $line
+     */
+    private function addLineupStat(array &$line, GameEvent $event): void
+    {
+        $type = $event->type;
+
+        if (! $this->isOurSide($event->home_away)) {
+            $line['opponentPoints'] += $type->points();
 
             return;
         }
 
-        $history[] = $row;
+        $line['points'] += $type->points();
+
+        $made = $type->points() > 0 ? 1 : 0;
+
+        if ($type === StatType::TwoPointMade || $type === StatType::TwoPointMissed) {
+            $line['twoAttempts']++;
+            $line['twoMade'] += $made;
+        }
+
+        if ($type === StatType::ThreePointMade || $type === StatType::ThreePointMissed) {
+            $line['threeAttempts']++;
+            $line['threeMade'] += $made;
+        }
+
+        if ($type === StatType::FreeThrowMade || $type === StatType::FreeThrowMissed) {
+            $line['freeAttempts']++;
+            $line['freeMade'] += $made;
+        }
     }
 
     /**
-     * @param  'period_start'|'substitution'  $reason
-     * @param  list<int>  $onCourt
+     * @param  list<int>  $ids
      * @param  \Illuminate\Support\Collection<int, Player>  $playersById
-     * @return array{
-     *     quarter: int,
-     *     period: string,
-     *     clock: string,
-     *     reason: 'period_start'|'substitution',
-     *     players: list<array{id: int, number: int|null, name: string, label: string}>
-     * }
+     * @return list<array{id: int, number: int|null, name: string, label: string}>
      */
-    private function lineupHistoryRow(
-        int $quarter,
-        string $clock,
-        string $reason,
-        array $onCourt,
-        \Illuminate\Support\Collection $playersById,
-    ): array {
+    private function lineupPlayers(array $ids, \Illuminate\Support\Collection $playersById): array
+    {
         $players = [];
 
-        foreach ($onCourt as $playerId) {
+        foreach ($ids as $playerId) {
             $player = $playersById->get($playerId);
 
             if (! $player instanceof Player) {
                 continue;
             }
 
-            $number = $player->number;
             $players[] = [
                 'id' => $player->id,
-                'number' => $number,
+                'number' => $player->number,
                 'name' => $player->name,
-                'label' => $number === null ? $player->name : '#'.$number.' '.$player->name,
+                'label' => $player->number === null ? $player->name : '#'.$player->number.' '.$player->name,
             ];
         }
 
@@ -861,13 +947,7 @@ class Game extends Model
             return strcasecmp($left['name'], $right['name']);
         });
 
-        return [
-            'quarter' => $quarter,
-            'period' => $this->shotChartPeriodLabel($quarter),
-            'clock' => $clock,
-            'reason' => $reason,
-            'players' => $players,
-        ];
+        return $players;
     }
 
     private static function clockToSeconds(string $clock): int

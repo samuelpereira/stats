@@ -30,6 +30,10 @@ class Show extends Component
 
     public bool $sharing = false;
 
+    public string $lineupSort = 'seconds';
+
+    private const LINEUP_SORTS = ['seconds', 'points', 'opponentPoints', 'twoMade', 'threeMade', 'freeMade', 'plusMinus'];
+
     public function mount(Game $game): void
     {
         $this->authorize('collect', $game);
@@ -108,6 +112,7 @@ class Show extends Component
         [$courtPlayers, $benchPlayers] = $this->splitSquad($boxScore['players'], $boxScore['court']);
         $boxScore['players'] = $this->sortBoxScorePlayers($boxScore['players']);
         $defaultColors = Game::defaultAttributes();
+        $teamColor = $weAreHome ? $this->game->home_color : $this->game->away_color;
 
         return view('livewire.statistics.show', [
             'boxScore' => $boxScore,
@@ -119,11 +124,13 @@ class Show extends Component
             'matchups' => $this->matchups($homeLine, $awayLine),
             'shotChartsByPeriod' => $this->filteredShotChartsByPeriod(),
             'gameFlow' => $this->game->gameFlow(),
-            'lineupHistory' => $this->game->lineupHistory(),
+            'lineupStats' => $this->sortLineupStats($this->game->lineupStats()),
             'homeShotChartPlayers' => $this->game->shotChartPlayers(HomeAway::Home),
             'awayShotChartPlayers' => $this->game->shotChartPlayers(HomeAway::Away),
             'homeColor' => $defaultColors['home_color']->hex(),
             'awayColor' => $defaultColors['away_color']->hex(),
+            'teamColor' => $teamColor->hex(),
+            'teamTextColor' => $teamColor->textHex(),
             'teamName' => $this->game->team->name,
             'opponentName' => $this->game->opponent,
             'homeName' => $homeName,
@@ -171,6 +178,26 @@ class Show extends Component
         [$side] = explode('|', $this->mobileShotChartFilter, 2);
 
         return $side === 'away' ? 'away' : 'home';
+    }
+
+    public function sortLineupsBy(string $column): void
+    {
+        if (in_array($column, self::LINEUP_SORTS, true)) {
+            $this->lineupSort = $column;
+        }
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function sortLineupStats(array $rows): array
+    {
+        $column = in_array($this->lineupSort, self::LINEUP_SORTS, true) ? $this->lineupSort : 'seconds';
+
+        usort($rows, fn (array $left, array $right): int => [$right[$column], $right['seconds']] <=> [$left[$column], $left['seconds']]);
+
+        return $rows;
     }
 
     protected function defaultMobileShotChartFilter(): string
