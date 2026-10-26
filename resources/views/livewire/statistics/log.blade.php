@@ -119,52 +119,98 @@
                 <th class="px-2 py-2 text-right font-medium">{{ __('Action') }}</th>
             </tr>
         </thead>
-        <tbody>
-            <template x-for="line in $store.collectQueue.lines" :key="'pending-' + line.id">
-                <tbody x-show="matches(line)">
-                    <tr x-show="isPeriod(line)">
-                        <td colspan="3" class="border-0 px-0 py-1.5">
-                            <div
-                                class="flex items-center gap-3 rounded-lg border px-3 py-2"
-                                :class="isPeriodStart(line)
-                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                                    : 'border-rose-200 bg-rose-50 text-rose-800'"
-                            >
-                                <span class="w-16 shrink-0 leading-tight">
-                                    <span class="block tabular-nums font-semibold" x-text="line.clock"></span>
-                                    <span class="block text-xs tabular-nums opacity-80" x-text="line.score"></span>
-                                </span>
-                                <span class="min-w-0 flex-1"></span>
-                                <span class="font-semibold" x-text="line.label"></span>
+        <template x-for="line in $store.collectQueue.lines" :key="'pending-' + line.id + '-' + line.actionKey + '-' + line.clock + '-' + line.label">
+            <tbody x-show="matches(line)">
+                <tr x-show="isPeriod(line)">
+                    <td colspan="3" class="border-0 px-0 py-1.5">
+                        <div
+                            class="flex items-center gap-3 rounded-lg border px-3 py-2"
+                            :class="isPeriodStart(line)
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                : 'border-rose-200 bg-rose-50 text-rose-800'"
+                        >
+                            <span class="w-16 shrink-0 leading-tight">
+                                <span class="block tabular-nums font-semibold" x-text="line.clock"></span>
+                                <span class="block text-xs tabular-nums opacity-80" x-text="line.score"></span>
+                            </span>
+                            <span class="min-w-0 flex-1"></span>
+                            <span class="font-semibold" x-text="line.label"></span>
+                        </div>
+                    </td>
+                </tr>
+                <tr
+                    x-show="! isPeriod(line)"
+                    class="border-b border-zinc-300 bg-zinc-200 align-top last:border-b-0"
+                    :class="line.editable ? 'cursor-pointer' : ''"
+                    @click="if (line.editable) $store.collectQueue.editPending(line.id)"
+                >
+                    <td class="px-2 py-2 leading-tight" :style="line.side === 'home' ? 'box-shadow: inset 4px 0 0 {{ $homeColor }}' : ''">
+                        <p class="tabular-nums text-zinc-500" x-text="line.clock"></p>
+                        <p class="text-xs tabular-nums text-zinc-400" x-text="line.score"></p>
+                    </td>
+                    <td class="max-w-0 px-2 py-2">
+                        <template x-if="line.playerLines.length > 0">
+                            <div class="leading-tight">
+                                <template x-for="playerLine in line.playerLines" :key="playerLine.name">
+                                    <p class="truncate font-medium" :class="playerLine.enters ? 'text-green-700' : 'text-red-700'" x-text="playerLine.name"></p>
+                                </template>
                             </div>
-                        </td>
-                    </tr>
-                    <tr
-                        x-show="! isPeriod(line)"
-                        class="border-b border-zinc-300 bg-zinc-200 align-top last:border-b-0"
-                        :class="line.editable ? 'cursor-pointer' : ''"
-                        @click="if (line.editable) $store.collectQueue.editPending(line.id)"
-                    >
-                        <td class="px-2 py-2 leading-tight" :style="line.side === 'home' ? 'box-shadow: inset 4px 0 0 {{ $homeColor }}' : ''">
-                            <p class="tabular-nums text-zinc-500" x-text="line.clock"></p>
-                            <p class="text-xs tabular-nums text-zinc-400" x-text="line.score"></p>
-                        </td>
-                        <td class="max-w-0 px-2 py-2">
-                            <template x-if="line.playerLines.length > 0">
-                                <div class="leading-tight">
-                                    <template x-for="playerLine in line.playerLines" :key="playerLine.name">
-                                        <p class="truncate font-medium" :class="playerLine.enters ? 'text-green-700' : 'text-red-700'" x-text="playerLine.name"></p>
-                                    </template>
-                                </div>
-                            </template>
-                            <p x-show="line.playerLines.length === 0" class="truncate" x-text="line.player"></p>
-                        </td>
-                        <td class="px-2 py-2 text-right" :style="line.side === 'away' ? 'box-shadow: inset -4px 0 0 {{ $awayColor }}' : ''">
-                            <p class="font-medium" :class="line.missed ? 'text-zinc-400' : 'text-zinc-900'" x-text="line.label"></p>
-                        </td>
-                    </tr>
-                </tbody>
-            </template>
+                        </template>
+                        <p x-show="line.playerLines.length === 0" class="truncate" x-text="line.player"></p>
+                    </td>
+                    <td class="px-2 py-2 text-right" :style="line.side === 'away' ? 'box-shadow: inset -4px 0 0 {{ $awayColor }}' : ''">
+                        <p class="font-medium" :class="line.missed ? 'text-zinc-400' : 'text-zinc-900'" x-text="line.label"></p>
+                    </td>
+                </tr>
+            </tbody>
+        </template>
+        <template x-for="line in $store.collectQueue.committedLines" :key="'committed-' + line.id">
+            <tbody x-show="matches(line)">
+                <tr x-show="isPeriod(line)">
+                    <td colspan="3" class="border-0 px-0 py-1.5">
+                        <div
+                            class="flex items-center gap-3 rounded-lg border px-3 py-2"
+                            :class="isPeriodStart(line)
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                : 'border-rose-200 bg-rose-50 text-rose-800'"
+                        >
+                            <span class="w-16 shrink-0 leading-tight">
+                                <span class="block tabular-nums font-semibold" x-text="line.clock"></span>
+                                <span class="block text-xs tabular-nums opacity-80" x-text="line.score"></span>
+                            </span>
+                            <span class="min-w-0 flex-1"></span>
+                            <span class="font-semibold" x-text="line.label"></span>
+                        </div>
+                    </td>
+                </tr>
+                <tr
+                    x-show="! isPeriod(line)"
+                    class="border-b border-zinc-100 align-top last:border-b-0"
+                    :class="line.editable ? 'cursor-pointer' : ''"
+                    @click="if (line.editable) $store.collectQueue.editCommitted(line)"
+                >
+                    <td class="px-2 py-2 leading-tight" :style="line.side === 'home' ? 'box-shadow: inset 4px 0 0 {{ $homeColor }}' : ''">
+                        <p class="tabular-nums text-zinc-500" x-text="line.clock"></p>
+                        <p class="text-xs tabular-nums text-zinc-400" x-text="line.score"></p>
+                    </td>
+                    <td class="max-w-0 px-2 py-2">
+                        <template x-if="(line.playerLines ?? []).length > 0">
+                            <div class="leading-tight">
+                                <template x-for="playerLine in line.playerLines" :key="playerLine.name">
+                                    <p class="truncate font-medium" :class="playerLine.enters ? 'text-green-700' : 'text-red-700'" x-text="playerLine.name"></p>
+                                </template>
+                            </div>
+                        </template>
+                        <p x-show="(line.playerLines ?? []).length === 0" class="truncate" x-text="line.player"></p>
+                    </td>
+                    <td class="px-2 py-2 text-right" :style="line.side === 'away' ? 'box-shadow: inset -4px 0 0 {{ $awayColor }}' : ''">
+                        <p class="font-medium" :class="line.missed ? 'text-zinc-400' : 'text-zinc-900'" x-text="line.label"></p>
+                        <p x-show="line.detail" class="text-xs text-zinc-500" x-text="line.detail"></p>
+                    </td>
+                </tr>
+            </tbody>
+        </template>
+        <tbody x-show="($store.collectQueue.committedLines ?? []).length === 0">
             @foreach ($lines as $line)
                 @php($isPeriodStart = ($line['actionKey'] ?? '') === 'quarter_started')
                 @php($isPeriodEnd = ($line['actionKey'] ?? '') === 'quarter_ended')
@@ -196,7 +242,7 @@
                             'border-b border-zinc-100 align-top last:border-b-0',
                             'cursor-pointer' => $line['editable'],
                         ])
-                        @if ($line['editable']) wire:click="editAction({{ $line['id'] }})" @endif
+                        @if ($line['editable']) @click="$store.collectQueue.editCommitted(@js($line))" @endif
                     >
                         <td class="px-2 py-2 leading-tight" @style(['box-shadow: inset 4px 0 0 '.$homeColor => $line['side'] === 'home'])>
                             <p class="tabular-nums text-zinc-500">{{ $line['clock'] }}</p>

@@ -18,6 +18,7 @@ use Illuminate\Support\Collection;
 /**
  * @property int $id
  * @property int $game_id
+ * @property string|null $collect_command_id
  * @property int|null $player_id
  * @property int|null $outgoing_player_id
  * @property HomeAway|null $home_away

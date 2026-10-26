@@ -21,10 +21,13 @@ use Closure;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\Renderless;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -1052,22 +1055,108 @@ class Record extends Component
 
     /**
      * @param  array<string, mixed>  $payload
+     * @return array{applied: list<string>, baseline: array<string, mixed>}
      */
-    public function applyCollectedAction(string $id, string $operation, array $payload, ApplyCollectedAction $action): void
+    #[Renderless]
+    public function applyCollectedAction(string $id, string $operation, array $payload, ApplyCollectedAction $action): array
     {
         $this->authorize('collect', $this->game);
 
         $action->handle($this->game, $id, $operation, $payload);
 
+        return $this->finishCollectedSync([$id], $operation === 'edit');
+    }
+
+    /**
+     * @param  list<array{id?: mixed, operation?: mixed, payload?: mixed}>  $items
+     * @return array{applied: list<string>, baseline: array<string, mixed>, error: string|null, failedId: string|null}
+     */
+    #[Renderless]
+    public function applyCollectedActions(array $items, ApplyCollectedAction $action): array
+    {
+        $this->authorize('collect', $this->game);
+
+        $applied = [];
+        $clearedEdit = false;
+        $error = null;
+        $failedId = null;
+
+        foreach ($items as $item) {
+            $id = isset($item['id']) ? (string) $item['id'] : '';
+            $operation = isset($item['operation']) ? (string) $item['operation'] : '';
+            $payload = $item['payload'] ?? null;
+
+            if ($payload instanceof \stdClass) {
+                $payload = (array) $payload;
+            }
+
+            if ($id === '' || $operation === '' || ! is_array($payload)) {
+                $error = $this->invalidCollectedActionMessage();
+                $failedId = $id !== '' ? $id : null;
+                break;
+            }
+
+            try {
+                $action->handle($this->game, $id, $operation, $payload);
+            } catch (ValidationException $exception) {
+                $message = collect($exception->errors())->flatten()->first();
+                $error = is_string($message) && $message !== '' ? $message : $this->invalidCollectedActionMessage();
+                $failedId = $id;
+                Log::warning('Collected action rejected', [
+                    'game' => $this->game->id,
+                    'id' => $id,
+                    'operation' => $operation,
+                    'payload' => $payload,
+                    'errors' => $exception->errors(),
+                ]);
+                break;
+            } catch (\Throwable $exception) {
+                report($exception);
+                $error = $this->invalidCollectedActionMessage();
+                $failedId = $id;
+                break;
+            }
+
+            $applied[] = $id;
+
+            if ($operation === 'edit') {
+                $clearedEdit = true;
+            }
+        }
+
+        return $this->finishCollectedSync($applied, $clearedEdit, $error, $failedId);
+    }
+
+    private function invalidCollectedActionMessage(): string
+    {
+        $message = __('The collected action is not valid.');
+
+        return is_string($message) ? $message : 'The collected action is not valid.';
+    }
+
+    /**
+     * @param  list<string>  $applied
+     * @return array{applied: list<string>, baseline: array<string, mixed>, error: string|null, failedId: string|null}
+     */
+    private function finishCollectedSync(array $applied, bool $clearedEdit, ?string $error = null, ?string $failedId = null): array
+    {
+        $this->game->refresh();
         $this->forgetCollectedEvents();
         $this->overtimeByQuarter = null;
         $this->restorePeriod();
 
-        if ($operation === 'edit') {
+        if ($clearedEdit) {
             $this->clearEditingAction();
         }
 
         unset($this->lines, $this->fouls, $this->timeouts, $this->lineup, $this->squad, $this->courtPlayers, $this->benchPlayers, $this->canUndo, $this->periodIsOpen, $this->gameStarted);
+
+        return [
+            'applied' => $applied,
+            'baseline' => $this->collectQueueSyncState(),
+            'error' => $error,
+            'failedId' => $failedId,
+        ];
     }
 
     #[Computed]
@@ -1395,7 +1484,7 @@ class Record extends Component
     }
 
     /**
-     * @return list<array{id: int, label: string, player: string, playerLines: list<array{enters: bool, name: string}>, detail: string, missed: bool, points: int, quarter: int, clock: string, score: string, editable: bool, side: string|null, actionKey: string, playerKeys: list<string>}>
+     * @return list<array{id: int, label: string, player: string, playerLines: list<array{enters: bool, name: string}>, detail: string, missed: bool, points: int, quarter: int, clock: string, score: string, editable: bool, side: string|null, actionKey: string, playerKeys: list<string>, type: string|null, playerId: int|null, outgoingPlayerId: int|null, forOpponent: bool, foulKind: string|null, courtX: int|null, courtY: int|null}>
      */
     private function lineItems(): array
     {
@@ -1426,12 +1515,22 @@ class Record extends Component
                     'side' => null,
                     'actionKey' => $event->type->value,
                     'playerKeys' => [],
+                    'type' => null,
+                    'playerId' => null,
+                    'outgoingPlayerId' => null,
+                    'forOpponent' => false,
+                    'foulKind' => null,
+                    'courtX' => null,
+                    'courtY' => null,
                 ];
 
                 continue;
             }
 
             $ours = $this->game->isOurSide($event->home_away);
+            $forOpponent = $event->type === StatType::Timeout
+                ? ! $ours
+                : ($event->type->isAssignableStat() && ! $ours);
             $actorKey = $ours ? ($event->player_id === null ? 'team' : (string) $event->player_id) : 'opponent';
             $eventPoints = $event->type->points();
             $points[$actorKey] = ($points[$actorKey] ?? 0) + $eventPoints;
@@ -1510,6 +1609,13 @@ class Record extends Component
                 'side' => $event->home_away?->value,
                 'actionKey' => $event->type->value,
                 'playerKeys' => $playerKeys,
+                'type' => $event->type->value,
+                'playerId' => $forOpponent ? null : $event->player_id,
+                'outgoingPlayerId' => $event->outgoing_player_id,
+                'forOpponent' => $forOpponent,
+                'foulKind' => $event->foul_kind?->value,
+                'courtX' => $event->court_x,
+                'courtY' => $event->court_y,
             ];
         }
 
@@ -1572,24 +1678,11 @@ class Record extends Component
         }
 
         return [
+            ...$this->collectQueueSyncState(),
             'gameId' => $this->game->id,
-            'quarter' => $this->quarter,
-            'awaitingQuarterStart' => $this->awaitingQuarterStart,
-            'quarterEnded' => $this->quarterEnded,
-            'periodOpen' => $this->periodIsOpen(),
-            'gameStarted' => $this->gameStarted(),
-            'canUndo' => $this->canUndo(),
-            'court' => $this->lineup()['court'],
             'markShotLocation' => $this->game->mark_shot_location,
             'quarterMinutes' => $this->game->quarter_minutes,
             'overtimeMinutes' => $this->game->overtime_minutes,
-            'finished' => $this->game->status === GameStatus::Played,
-            'teamPoints' => $this->teamPoints(),
-            'opponentPoints' => $this->opponentDisplayPoints(),
-            'teamFouls' => $this->fouls()['team'],
-            'opponentFouls' => $this->fouls()['opponent'],
-            'teamTimeouts' => $this->timeouts()['team'],
-            'opponentTimeouts' => $this->timeouts()['opponent'],
             'homeAway' => $this->game->home_away->value,
             'opponentName' => $this->game->opponent,
             'teamName' => $this->game->team->name,
@@ -1610,16 +1703,6 @@ class Record extends Component
                 fn (StatType $stat): string => $stat->value,
                 array_filter(StatType::cases(), fn (StatType $stat): bool => $stat->isFieldGoal()),
             )),
-            'roster' => $this->orderedSquad()
-                ->map(fn (Player $player): array => [
-                    'id' => $player->id,
-                    'name' => $player->name,
-                    'number' => $player->number,
-                    'label' => $this->loggedPlayer($player),
-                    'fouls' => $this->fouls()['players'][$player->id] ?? 0,
-                ])
-                ->values()
-                ->all(),
             'labels' => $labels,
             'editableTypes' => $editableTypes,
             'typeSwapGroups' => $typeSwapGroups,
@@ -1655,8 +1738,66 @@ class Record extends Component
                 'endOvertimeQuestion' => __('Do you want to end OT:overtime?', ['overtime' => ':overtime']),
                 'saving' => __('Saving…'),
                 'markFive' => __('Mark 5 players.'),
+                'lineupButton' => $this->game->events()->exists() ? null : __('Lineup'),
+                'substitutionButton' => __('Substitution'),
             ],
         ];
+    }
+
+    /**
+     * Dynamic collect-queue fields refreshed after a renderless sync.
+     *
+     * @return array<string, mixed>
+     */
+    private function collectQueueSyncState(): array
+    {
+        return [
+            'quarter' => $this->quarter,
+            'awaitingQuarterStart' => $this->awaitingQuarterStart,
+            'quarterEnded' => $this->quarterEnded,
+            'periodOpen' => $this->periodIsOpen(),
+            'gameStarted' => $this->gameStarted(),
+            'canUndo' => $this->canUndo(),
+            'court' => $this->lineup()['court'],
+            'seconds' => $this->lineup()['seconds'],
+            'clock' => $this->clock,
+            'finished' => $this->game->status === GameStatus::Played,
+            'teamPoints' => $this->teamPoints(),
+            'opponentPoints' => $this->opponentDisplayPoints(),
+            'teamFouls' => $this->fouls()['team'],
+            'opponentFouls' => $this->fouls()['opponent'],
+            'teamTimeouts' => $this->timeouts()['team'],
+            'opponentTimeouts' => $this->timeouts()['opponent'],
+            'lines' => $this->collectQueueLogLines(),
+            'roster' => $this->orderedSquad()
+                ->map(fn (Player $player): array => [
+                    'id' => $player->id,
+                    'name' => $player->name,
+                    'number' => $player->number,
+                    'label' => $this->loggedPlayer($player),
+                    'fouls' => $this->fouls()['players'][$player->id] ?? 0,
+                ])
+                ->values()
+                ->all(),
+        ];
+    }
+
+    /**
+     * Log rows for Alpine after a renderless sync (labels already translated).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function collectQueueLogLines(): array
+    {
+        return array_map(function (array $line): array {
+            $isPeriod = $line['actionKey'] === StatType::QuarterStarted->value
+                || $line['actionKey'] === StatType::QuarterEnded->value;
+
+            return [
+                ...$line,
+                'label' => $isPeriod ? $line['label'] : __($line['label']),
+            ];
+        }, $this->lines());
     }
 
     public function render(): View

@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\ApplyCollectedAction;
 use App\Enums\FoulKind;
 use App\Enums\GameStatus;
 use App\Enums\HomeAway;
@@ -293,7 +294,6 @@ test('a logged foul keeps its type when edited', function () {
         'home_away' => HomeAway::Home,
     ]);
     $player = Player::factory()->create(['team_id' => $team->id]);
-    $replacement = Player::factory()->create(['team_id' => $team->id]);
     $event = GameEvent::factory()->create([
         'game_id' => $game->id,
         'player_id' => $player->id,
@@ -303,9 +303,8 @@ test('a logged foul keeps its type when edited', function () {
     ]);
 
     giveStartingFive($game, $player);
-    $game->players()->syncWithoutDetaching([
-        $replacement->id => ['starter' => false],
-    ]);
+
+    $replacement = $game->players()->whereKeyNot($player->id)->firstOrFail();
 
     statisticsRecord($member, $game)
         ->call('editAction', $event->id)
@@ -370,8 +369,12 @@ test('a logged line can be given to another player or the opponent', function ()
     ]);
 
     giveStartingFive($game, $player);
+    $game->players()->updateExistingPivot(
+        $game->players()->whereKeyNot($player->id)->firstOrFail()->id,
+        ['starter' => false],
+    );
     $game->players()->syncWithoutDetaching([
-        $replacement->id => ['starter' => false],
+        $replacement->id => ['starter' => true],
     ]);
 
     $screen = statisticsRecord($member, $game)
@@ -609,15 +612,17 @@ test('a club member records an opponent basket from the player screen', function
 
     statisticsRecord($member, $game)
         ->call('select', StatType::TwoPointMade->value)
-        ->assertSee('2-point basket')
+        ->assertSet('pendingType', StatType::TwoPointMade->value)
+        ->assertSet('choosingPlayer', true)
         ->assertSee('Cancel')
         ->assertSee('#84')
         ->assertSee('Alex')
         ->assertSee('South Valley U18')
         ->call('recordOpponent')
+        ->assertSet('pendingType', null)
+        ->assertSet('choosingPlayer', false)
         ->assertSee('56')
-        ->assertSee('South Valley U18')
-        ->assertDontSee('2-point basket');
+        ->assertSee('South Valley U18');
 
     $event = GameEvent::query()->where('type', StatType::TwoPointMade)->first();
 
@@ -1462,14 +1467,14 @@ test('a stat opens the player picker in a modal over the pad', function () {
     statisticsRecord($member, $game)
         ->call('select', StatType::TwoPointMade->value)
         ->assertSet('choosingPlayer', true)
-        ->assertSee('2-point basket')
+        ->assertSet('pendingType', StatType::TwoPointMade->value)
         ->assertSee('2P')
         ->assertSee('Jordan')
         ->assertSee('Metro United')
         ->assertSee('/storage/opponents/crest.png')
         ->call('select', StatType::DefensiveRebound->value)
         ->assertSet('choosingPlayer', true)
-        ->assertSee('Defensive Rebound')
+        ->assertSet('pendingType', StatType::DefensiveRebound->value)
         ->call('cancel')
         ->assertSet('choosingPlayer', false)
         ->assertSet('pendingType', null);
@@ -1721,6 +1726,518 @@ test('a queued record followed by undo leaves the game without that event', func
 
     expect(GameEvent::query()->where('type', StatType::Steal)->count())->toBe(0)
         ->and(GameEvent::query()->where('type', StatType::QuarterStarted)->count())->toBe(1);
+});
+
+test('a batch of collected actions applies each command once and returns sync state', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    $stealId = fake()->uuid();
+    $assistId = fake()->uuid();
+    $batch = [
+        [
+            'id' => $stealId,
+            'operation' => 'record',
+            'payload' => [
+                'type' => StatType::Steal->value,
+                'playerId' => $player->id,
+                'forOpponent' => false,
+                'quarter' => 1,
+                'clock' => '05:00',
+                'courtX' => null,
+                'courtY' => null,
+            ],
+        ],
+        [
+            'id' => $assistId,
+            'operation' => 'record',
+            'payload' => [
+                'type' => StatType::Assist->value,
+                'playerId' => $player->id,
+                'forOpponent' => false,
+                'quarter' => 1,
+                'clock' => '04:50',
+                'courtX' => null,
+                'courtY' => null,
+            ],
+        ],
+    ];
+
+    $screen = statisticsRecord($member, $game);
+    $result = $screen->instance()->applyCollectedActions($batch, app(ApplyCollectedAction::class));
+
+    expect($result['applied'])->toBe([$stealId, $assistId])
+        ->and($result['error'])->toBeNull()
+        ->and($result['failedId'])->toBeNull()
+        ->and($result['baseline'])->toHaveKeys(['teamPoints', 'canUndo', 'court', 'periodOpen', 'lines'])
+        ->and($result['baseline']['canUndo'])->toBeTrue()
+        ->and(collect($result['baseline']['lines'])->pluck('actionKey')->all())->toContain(StatType::Steal->value, StatType::Assist->value)
+        ->and(GameEvent::query()->where('type', StatType::Steal)->count())->toBe(1)
+        ->and(GameEvent::query()->where('type', StatType::Assist)->count())->toBe(1)
+        ->and(CollectCommand::query()->count())->toBe(2);
+
+    $again = $screen->instance()->applyCollectedActions($batch, app(ApplyCollectedAction::class));
+
+    expect($again['applied'])->toBe([$stealId, $assistId])
+        ->and($again['error'])->toBeNull()
+        ->and(GameEvent::query()->where('type', StatType::Steal)->count())->toBe(1)
+        ->and(GameEvent::query()->where('type', StatType::Assist)->count())->toBe(1)
+        ->and(CollectCommand::query()->count())->toBe(2);
+
+    $stealLine = collect($result['baseline']['lines'])->firstWhere('actionKey', StatType::Steal->value);
+
+    expect($stealLine)->toMatchArray([
+        'type' => StatType::Steal->value,
+        'playerId' => $player->id,
+        'forOpponent' => false,
+        'foulKind' => null,
+        'editable' => true,
+    ]);
+});
+
+test('a collected batch stops on validation failure and returns the error', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    $invalidId = fake()->uuid();
+    $validId = fake()->uuid();
+
+    $result = statisticsRecord($member, $game)->instance()->applyCollectedActions([
+        [
+            'id' => $invalidId,
+            'operation' => 'record',
+            'payload' => [
+                'type' => StatType::Steal->value,
+                'playerId' => $player->id,
+                'forOpponent' => false,
+                'quarter' => 1,
+                'clock' => 'bad-clock',
+                'courtX' => null,
+                'courtY' => null,
+            ],
+        ],
+        [
+            'id' => $validId,
+            'operation' => 'record',
+            'payload' => [
+                'type' => StatType::Steal->value,
+                'playerId' => $player->id,
+                'forOpponent' => false,
+                'quarter' => 1,
+                'clock' => '05:00',
+                'courtX' => null,
+                'courtY' => null,
+            ],
+        ],
+    ], app(ApplyCollectedAction::class));
+
+    expect($result['applied'])->toBe([])
+        ->and($result['failedId'])->toBe($invalidId)
+        ->and($result['error'])->not->toBeNull()
+        ->and(GameEvent::query()->where('type', StatType::Steal)->count())->toBe(0)
+        ->and(CollectCommand::query()->count())->toBe(0);
+});
+
+test('a collected batch keeps earlier applied actions when a later item fails', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    $firstId = fake()->uuid();
+    $failedId = fake()->uuid();
+
+    $result = statisticsRecord($member, $game)->instance()->applyCollectedActions([
+        [
+            'id' => $firstId,
+            'operation' => 'record',
+            'payload' => [
+                'type' => StatType::Steal->value,
+                'playerId' => $player->id,
+                'forOpponent' => false,
+                'quarter' => 1,
+                'clock' => '05:00',
+                'courtX' => null,
+                'courtY' => null,
+            ],
+        ],
+        [
+            'id' => $failedId,
+            'operation' => 'record',
+            'payload' => [
+                'type' => StatType::Steal->value,
+                'playerId' => $player->id,
+                'forOpponent' => false,
+                'quarter' => 1,
+                'clock' => 'bad-clock',
+                'courtX' => null,
+                'courtY' => null,
+            ],
+        ],
+    ], app(ApplyCollectedAction::class));
+
+    expect($result['applied'])->toBe([$firstId])
+        ->and($result['failedId'])->toBe($failedId)
+        ->and($result['error'])->not->toBeNull()
+        ->and(GameEvent::query()->where('type', StatType::Steal)->count())->toBe(1)
+        ->and(CollectCommand::query()->count())->toBe(1);
+});
+
+test('a collected edit updates the event and returns hydrate fields on log lines', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+        'home_away' => HomeAway::Home,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    $replacement = $game->players()->whereKeyNot($player->id)->firstOrFail();
+    $screen = statisticsRecord($member, $game);
+    $recordId = fake()->uuid();
+    $screen->instance()->applyCollectedAction($recordId, 'record', [
+        'type' => StatType::Steal->value,
+        'playerId' => $player->id,
+        'forOpponent' => false,
+        'quarter' => 1,
+        'clock' => '05:00',
+        'courtX' => null,
+        'courtY' => null,
+    ], app(ApplyCollectedAction::class));
+
+    $event = GameEvent::query()->where('type', StatType::Steal)->firstOrFail();
+    $editId = fake()->uuid();
+    $result = $screen->instance()->applyCollectedAction($editId, 'edit', [
+        'eventId' => $event->id,
+        'type' => StatType::Assist->value,
+        'playerId' => $replacement->id,
+        'outgoingPlayerId' => null,
+        'forOpponent' => false,
+        'foulKind' => null,
+        'clock' => '04:30',
+    ], app(ApplyCollectedAction::class));
+
+    expect($result['applied'])->toBe([$editId])
+        ->and($event->refresh()->type)->toBe(StatType::Assist)
+        ->and($event->player_id)->toBe($replacement->id)
+        ->and($event->clock)->toBe('04:30');
+
+    $line = collect($result['baseline']['lines'])->firstWhere('id', $event->id);
+
+    expect($line)->toMatchArray([
+        'type' => StatType::Assist->value,
+        'actionKey' => StatType::Assist->value,
+        'playerId' => $replacement->id,
+        'forOpponent' => false,
+        'foulKind' => null,
+        'clock' => '04:30',
+        'editable' => true,
+    ]);
+});
+
+test('a collected two-point record with three-point coordinates is rejected', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+        'mark_shot_location' => true,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    $result = statisticsRecord($member, $game)->instance()->applyCollectedActions([
+        [
+            'id' => fake()->uuid(),
+            'operation' => 'record',
+            'payload' => [
+                'type' => StatType::TwoPointMade->value,
+                'playerId' => $player->id,
+                'forOpponent' => false,
+                'quarter' => 1,
+                'clock' => '04:15',
+                'courtX' => 500,
+                'courtY' => 520,
+            ],
+        ],
+    ], app(ApplyCollectedAction::class));
+
+    expect($result['applied'])->toBe([])
+        ->and($result['error'])->not->toBeNull()
+        ->and(GameEvent::query()->where('type', StatType::TwoPointMade)->count())->toBe(0);
+});
+
+test('editing a three-point shot to two points clears incompatible court coordinates', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+        'mark_shot_location' => true,
+        'home_away' => HomeAway::Home,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    $screen = statisticsRecord($member, $game);
+    $screen->instance()->applyCollectedAction(fake()->uuid(), 'record', [
+        'type' => StatType::ThreePointMade->value,
+        'playerId' => $player->id,
+        'forOpponent' => false,
+        'quarter' => 1,
+        'clock' => '04:15',
+        'courtX' => 500,
+        'courtY' => 520,
+    ], app(ApplyCollectedAction::class));
+
+    $event = GameEvent::query()->where('type', StatType::ThreePointMade)->firstOrFail();
+
+    expect($event->court_x)->toBe(500)
+        ->and($event->court_y)->toBe(520);
+
+    $result = $screen->instance()->applyCollectedAction(fake()->uuid(), 'edit', [
+        'eventId' => $event->id,
+        'type' => StatType::TwoPointMade->value,
+        'playerId' => $player->id,
+        'outgoingPlayerId' => null,
+        'forOpponent' => false,
+        'foulKind' => null,
+        'clock' => '04:15',
+    ], app(ApplyCollectedAction::class));
+
+    expect($result['applied'])->toHaveCount(1)
+        ->and($event->refresh()->type)->toBe(StatType::TwoPointMade)
+        ->and($event->court_x)->toBeNull()
+        ->and($event->court_y)->toBeNull();
+});
+
+test('a collected edit can replace the shot location when changing three points to two', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+        'mark_shot_location' => true,
+        'home_away' => HomeAway::Home,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    $screen = statisticsRecord($member, $game);
+    $screen->instance()->applyCollectedAction(fake()->uuid(), 'record', [
+        'type' => StatType::ThreePointMade->value,
+        'playerId' => $player->id,
+        'forOpponent' => false,
+        'quarter' => 1,
+        'clock' => '04:15',
+        'courtX' => 500,
+        'courtY' => 520,
+    ], app(ApplyCollectedAction::class));
+
+    $event = GameEvent::query()->where('type', StatType::ThreePointMade)->firstOrFail();
+    $result = $screen->instance()->applyCollectedAction(fake()->uuid(), 'edit', [
+        'eventId' => $event->id,
+        'type' => StatType::TwoPointMade->value,
+        'playerId' => $player->id,
+        'outgoingPlayerId' => null,
+        'forOpponent' => false,
+        'foulKind' => null,
+        'clock' => '04:15',
+        'courtX' => 500,
+        'courtY' => 300,
+    ], app(ApplyCollectedAction::class));
+
+    expect($result['applied'])->toHaveCount(1)
+        ->and($event->refresh()->type)->toBe(StatType::TwoPointMade)
+        ->and($event->court_x)->toBe(500)
+        ->and($event->court_y)->toBe(300)
+        ->and(collect($result['baseline']['lines'])->firstWhere('id', $event->id))->toMatchArray([
+            'courtX' => 500,
+            'courtY' => 300,
+        ]);
+});
+
+test('a logged action can only be given to a player who was on the court at that moment', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+    ]);
+    $starter = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $starter);
+
+    $teammate = $game->players()->whereKeyNot($starter->id)->firstOrFail();
+    $bench = Player::factory()->create(['team_id' => $game->team_id]);
+    $game->players()->attach($bench->id, ['starter' => false]);
+    $court = $game->players()->wherePivot('starter', true)->pluck('players.id')->map(fn (mixed $id): int => (int) $id);
+
+    $screen = statisticsRecord($member, $game);
+    $action = app(ApplyCollectedAction::class);
+    $screen->instance()->applyCollectedActions([
+        ['id' => fake()->uuid(), 'operation' => 'record', 'payload' => [
+            'type' => StatType::Steal->value,
+            'playerId' => $teammate->id,
+            'forOpponent' => false,
+            'quarter' => 1,
+            'clock' => '08:00',
+        ]],
+        ['id' => fake()->uuid(), 'operation' => 'substitution', 'payload' => [
+            'playerIds' => $court->reject(fn (int $id): bool => $id === $starter->id)->push($bench->id)->values()->all(),
+            'quarter' => 1,
+            'clock' => '07:00',
+        ]],
+    ], $action);
+
+    $steal = GameEvent::query()->where('type', StatType::Steal)->firstOrFail();
+    $edit = fn (int $playerId): array => $screen->instance()->applyCollectedActions([
+        ['id' => fake()->uuid(), 'operation' => 'edit', 'payload' => [
+            'eventId' => $steal->id,
+            'type' => StatType::Steal->value,
+            'playerId' => $playerId,
+            'forOpponent' => false,
+            'clock' => '08:00',
+        ]],
+    ], $action);
+
+    expect($edit($bench->id)['error'])->toBe(__('The player was not on the court at that moment.'))
+        ->and($steal->refresh()->player_id)->toBe($teammate->id)
+        ->and($edit($starter->id)['applied'])->toHaveCount(1)
+        ->and($steal->refresh()->player_id)->toBe($starter->id);
+});
+
+test('a cancelled action that arrives late is not stored', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    $recordId = fake()->uuid();
+
+    statisticsRecord($member, $game)
+        ->call('applyCollectedAction', fake()->uuid(), 'cancel', ['targetId' => $recordId])
+        ->call('applyCollectedAction', $recordId, 'record', [
+            'type' => StatType::Steal->value,
+            'playerId' => $player->id,
+            'forOpponent' => false,
+            'quarter' => 1,
+            'clock' => '04:15',
+            'courtX' => null,
+            'courtY' => null,
+        ]);
+
+    expect(GameEvent::query()->where('type', StatType::Steal)->exists())->toBeFalse();
+});
+
+test('cancelling an applied action removes only the events it created', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    $stealId = fake()->uuid();
+    $payload = [
+        'playerId' => $player->id,
+        'forOpponent' => false,
+        'quarter' => 1,
+        'clock' => '04:15',
+        'courtX' => null,
+        'courtY' => null,
+    ];
+
+    statisticsRecord($member, $game)
+        ->call('applyCollectedAction', $stealId, 'record', ['type' => StatType::Steal->value] + $payload)
+        ->call('applyCollectedAction', fake()->uuid(), 'period', [
+            'type' => StatType::QuarterEnded->value,
+            'quarter' => 1,
+            'clock' => '00:00',
+        ])
+        ->call('applyCollectedAction', fake()->uuid(), 'cancel', ['targetId' => $stealId]);
+
+    expect(GameEvent::query()->where('type', StatType::Steal)->exists())->toBeFalse()
+        ->and(GameEvent::query()->where('type', StatType::QuarterEnded)->count())->toBe(1);
+});
+
+test('cancelling an applied edit restores the previous values', function () {
+    $club = Club::factory()->create();
+    $member = User::factory()->memberOf($club)->create();
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => $club->id])->id,
+        'mark_shot_location' => true,
+        'home_away' => HomeAway::Home,
+    ]);
+    $player = Player::factory()->create(['team_id' => $game->team_id]);
+
+    giveStartingFive($game, $player);
+
+    $screen = statisticsRecord($member, $game);
+    $screen->instance()->applyCollectedAction(fake()->uuid(), 'record', [
+        'type' => StatType::ThreePointMade->value,
+        'playerId' => $player->id,
+        'forOpponent' => false,
+        'quarter' => 1,
+        'clock' => '04:15',
+        'courtX' => 500,
+        'courtY' => 520,
+    ], app(ApplyCollectedAction::class));
+
+    $event = GameEvent::query()->where('type', StatType::ThreePointMade)->firstOrFail();
+    $edit = [
+        'eventId' => $event->id,
+        'playerId' => $player->id,
+        'outgoingPlayerId' => null,
+        'forOpponent' => false,
+        'foulKind' => null,
+        'clock' => '04:15',
+    ];
+    $editId = fake()->uuid();
+
+    $screen->instance()->applyCollectedAction($editId, 'edit', [
+        'type' => StatType::TwoPointMade->value,
+        'courtX' => 500,
+        'courtY' => 300,
+    ] + $edit, app(ApplyCollectedAction::class));
+
+    expect($event->refresh()->type)->toBe(StatType::TwoPointMade);
+
+    $screen->instance()->applyCollectedAction(fake()->uuid(), 'cancel', [
+        'targetId' => $editId,
+        'revert' => [
+            'type' => StatType::ThreePointMade->value,
+            'courtX' => 500,
+            'courtY' => 520,
+        ] + $edit,
+    ], app(ApplyCollectedAction::class));
+
+    expect($event->refresh()->type)->toBe(StatType::ThreePointMade)
+        ->and($event->court_x)->toBe(500)
+        ->and($event->court_y)->toBe(520);
 });
 
 test('undo removes only an action from the open period', function () {

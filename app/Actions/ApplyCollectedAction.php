@@ -10,6 +10,7 @@ use App\Models\CollectCommand;
 use App\Models\Game;
 use App\Models\GameEvent;
 use App\Support\ShotCourt;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -26,26 +27,44 @@ class ApplyCollectedAction
      */
     public function handle(Game $game, string $id, string $operation, array $payload): void
     {
-        if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $id) !== 1) {
+        if (! $this->isUuid($id)) {
             $this->invalid('id', __('The collected action is not valid.'));
         }
 
         DB::transaction(function () use ($game, $id, $operation, $payload): void {
             Game::query()->whereKey($game->id)->lockForUpdate()->first();
 
-            $inserted = CollectCommand::query()->insertOrIgnore([
-                'id' => $id,
-                'game_id' => $game->id,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            if ($inserted === 0) {
+            if (! $this->claim($game, $id)) {
                 return;
             }
 
+            $latestEventId = (int) $game->events()->max('id');
+
             $this->apply($game, $operation, $payload);
+
+            $game->events()
+                ->where('id', '>', $latestEventId)
+                ->whereNull('collect_command_id')
+                ->update(['collect_command_id' => $id]);
         });
+    }
+
+    /**
+     * Record the command id; false when it was already applied or cancelled.
+     */
+    private function claim(Game $game, string $id): bool
+    {
+        return CollectCommand::query()->insertOrIgnore([
+            'id' => $id,
+            'game_id' => $game->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]) === 1;
+    }
+
+    private function isUuid(string $id): bool
+    {
+        return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $id) === 1;
     }
 
     /**
@@ -60,8 +79,47 @@ class ApplyCollectedAction
             'period' => $this->period($game, $payload),
             'undo' => $this->deleteLatestGameEvent->handle($game),
             'edit' => $this->edit($game, $payload),
+            'cancel' => $this->cancel($game, $payload),
             default => $this->invalid('operation', __('The collected action is not valid.')),
         };
+    }
+
+    /**
+     * Reverse one earlier command whose outcome the device could not confirm.
+     * An unapplied target is claimed so a late delivery is ignored; an applied
+     * record loses its events and an applied edit gets its previous values back.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function cancel(Game $game, array $payload): void
+    {
+        $targetId = $payload['targetId'] ?? null;
+
+        if (! is_string($targetId) || ! $this->isUuid($targetId)) {
+            $this->invalid('targetId', __('The collected action is not valid.'));
+        }
+
+        if ($this->claim($game, $targetId)) {
+            return;
+        }
+
+        if (! CollectCommand::query()->whereKey($targetId)->where('game_id', $game->id)->exists()) {
+            $this->invalid('targetId', __('The collected action is not valid.'));
+        }
+
+        $revert = $payload['revert'] ?? null;
+
+        if (is_array($revert)) {
+            $eventId = $this->requiredInt($revert['eventId'] ?? null, 'eventId');
+
+            if ($game->events()->whereKey($eventId)->exists()) {
+                $this->edit($game, $revert);
+            }
+
+            return;
+        }
+
+        $game->events()->where('collect_command_id', $targetId)->delete();
     }
 
     /**
@@ -304,16 +362,27 @@ class ApplyCollectedAction
             $this->invalid('type', __('The collected action is not valid.'));
         }
 
-        $this->updateGameEventType->handle(
-            $game,
-            $eventId,
-            $type,
-            $playerId,
-            $clock,
-            $outgoingPlayerId,
-            $forOpponent,
-            $foulKind,
-        );
+        $courtProvided = array_key_exists('courtX', $payload) || array_key_exists('courtY', $payload);
+        $courtX = $this->nullableInt($payload['courtX'] ?? null);
+        $courtY = $this->nullableInt($payload['courtY'] ?? null);
+
+        try {
+            $this->updateGameEventType->handle(
+                $game,
+                $eventId,
+                $type,
+                $playerId,
+                $clock,
+                $outgoingPlayerId,
+                $forOpponent,
+                $foulKind,
+                $courtX,
+                $courtY,
+                $courtProvided,
+            );
+        } catch (ModelNotFoundException) {
+            $this->invalid('eventId', __('The collected action is not valid.'));
+        }
     }
 
     private function assertPeriodOpen(Game $game): void

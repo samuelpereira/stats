@@ -25,7 +25,7 @@
                     return;
                 }
 
-                this.made = ! String(this.$store.collectQueue?.pendingType ?? '').includes('missed');
+                this.made = ! String(this.$store.collectQueue?.shotType() ?? '').includes('missed');
             });
         },
         courtWidth: @js($courtWidth),
@@ -66,17 +66,18 @@
 
             const queue = this.$store.collectQueue;
 
-            if (queue?.choosingShot && ! queue.allowsShot(queue.pendingType, x, y)) {
+            if (! queue?.choosingShot) {
+                return;
+            }
+
+            if (! queue.allowsShot(queue.shotType(), x, y)) {
                 queue.shotError = true;
                 this.marker = null;
 
                 return;
             }
 
-            if (queue?.choosingShot) {
-                queue.shotError = false;
-            }
-
+            queue.shotError = false;
             this.marker = { x, y };
 
             await new Promise((resolve) => window.setTimeout(resolve, 500));
@@ -84,15 +85,11 @@
             this.submitting = true;
 
             try {
-                if (queue?.choosingShot) {
-                    await queue.recordShot(x, y);
-                } else {
-                    await $wire.recordShotLocation(x, y, this.$store.gameClock?.formatted ?? null);
-                }
+                await queue.recordShot(x, y);
             } finally {
                 this.submitting = false;
 
-                if ($wire.choosingShotLocation || queue?.choosingShot) {
+                if (queue.choosingShot) {
                     this.marker = null;
                 }
             }
