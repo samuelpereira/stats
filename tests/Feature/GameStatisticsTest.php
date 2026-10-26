@@ -154,13 +154,10 @@ test('the statistics button opens the game box score', function () {
         ->assertViewHas('benchPlayers', fn (array $players): bool => count($players) === 1 && $players[0]['name'] === 'Pedro Silva')
         ->assertSee('Q1')
         ->assertSee('T')
-        ->assertSee('F')
-        ->assertViewHas('homePeriodFouls', 2)
-        ->assertViewHas('awayPeriodFouls', 1)
+        ->assertDontSee('>F<', false)
         ->assertSee('1-1')
         ->assertSee('Matchup')
         ->assertSee('Game flow')
-        ->assertSee('Score progress through the game')
         ->assertViewHas('gameFlow', fn (?array $flow): bool => $flow !== null
             && $flow['points'][0] === ['x' => 0.0, 'home' => 0, 'away' => 0]
             && $flow['points'][1]['home'] === 2
@@ -170,7 +167,6 @@ test('the statistics button opens the game box score', function () {
             && $flow['markers'][0]['label'] === 'Q1'
             && $flow['maxScore'] === 3)
         ->assertSee('Shot Charts')
-        ->assertSee('Court locations for shot makes and misses')
         ->assertSee('Q1')
         ->assertViewHas('shotChartsByPeriod', fn (array $charts): bool => count($charts) === 2
             && $charts[0]['label'] === 'Q1'
@@ -181,7 +177,7 @@ test('the statistics button opens the game box score', function () {
             && $charts[1]['label'] === 'Totals'
             && count($charts[1]['home']) === 2
             && count($charts[1]['away']) === 0)
-        ->assertSee('FGM-A')
+        ->assertSeeInOrder(['PTS', 'FG (%)', '2P (%)', '3P (%)', 'FT (%)', 'DFR', 'OFR', 'TR', 'AST', 'BLK', 'STL', 'TO', 'PF+TF'])
         ->assertSet('backUrl', route('statistics.index'));
 });
 
@@ -479,6 +475,26 @@ test('the mobile shot chart starts on the club team', function () {
     Livewire::actingAs($member)
         ->test(StatisticsShow::class, ['game' => $home])
         ->assertSet('mobileShotChartFilter', 'home|team');
+});
+
+test('statistics charts use the configured default colors not the game colors', function () {
+    $club = Club::factory()->create();
+    $team = Team::factory()->create(['club_id' => $club->id]);
+    $member = User::factory()->memberOf($club)->withTeams($team)->create();
+    $defaults = Game::defaultAttributes();
+    $game = Game::factory()->create([
+        'team_id' => $team->id,
+        'home_color' => TeamColor::Red,
+        'away_color' => TeamColor::Green,
+    ]);
+
+    expect($defaults['home_color'])->not->toBe(TeamColor::Red)
+        ->and($defaults['away_color'])->not->toBe(TeamColor::Green);
+
+    Livewire::actingAs($member)
+        ->test(StatisticsShow::class, ['game' => $game])
+        ->assertViewHas('homeColor', $defaults['home_color']->hex())
+        ->assertViewHas('awayColor', $defaults['away_color']->hex());
 });
 
 test('a finished game hides the court and bench cards', function () {

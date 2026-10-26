@@ -45,10 +45,30 @@ function transactionDone(transaction) {
     });
 }
 
+function normalizeGameId(gameId) {
+    const id = Number(gameId);
+
+    return Number.isFinite(id) ? id : gameId;
+}
+
 async function itemsForGame(database, gameId) {
-    const transaction = database.transaction('actions', 'readonly');
-    const rows = await requestToPromise(transaction.objectStore('actions').index('gameId').getAll(gameId));
-    await transactionDone(transaction);
+    const key = normalizeGameId(gameId);
+    const readByKey = async (indexKey) => {
+        const transaction = database.transaction('actions', 'readonly');
+        const rows = await requestToPromise(transaction.objectStore('actions').index('gameId').getAll(indexKey));
+        await transactionDone(transaction);
+
+        return rows;
+    };
+
+    let rows = await readByKey(key);
+
+    // Older queued rows may have stored gameId as a string.
+    if (rows.length === 0 && String(key) !== String(gameId)) {
+        rows = await readByKey(String(gameId));
+    } else if (rows.length === 0 && typeof key === 'number') {
+        rows = await readByKey(String(key));
+    }
 
     return rows.sort((left, right) => left.seq - right.seq);
 }
@@ -97,6 +117,67 @@ function runningScoreLabel(homeAway, teamPoints, opponentPoints) {
     return `${opponentPoints}-${teamPoints}`;
 }
 
+function formatPlayedSeconds(total) {
+    const seconds = Math.max(0, Number(total) || 0);
+
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function normalizeSecondsMap(seconds) {
+    const normalized = {};
+
+    Object.entries(seconds ?? {}).forEach(([playerId, value]) => {
+        normalized[Number(playerId)] = Math.max(0, Number(value) || 0);
+    });
+
+    return normalized;
+}
+
+function toPlain(value) {
+    if (value === undefined) {
+        return undefined;
+    }
+
+    return JSON.parse(JSON.stringify(value));
+}
+
+function durableQueueItem(item) {
+    const durable = {
+        id: item.id,
+        gameId: item.gameId,
+        seq: item.seq,
+        operation: item.operation,
+        payload: toPlain(item.payload) ?? {},
+    };
+
+    if (item.attempted) {
+        durable.attempted = true;
+    }
+
+    if (item.revert) {
+        durable.revert = toPlain(item.revert);
+    }
+
+    return durable;
+}
+
+function shiftScoreLabel(label, homeAway, teamDelta, opponentDelta) {
+    const match = String(label ?? '').match(/^(\d+)-(\d+)$/);
+
+    if (! match || (teamDelta === 0 && opponentDelta === 0)) {
+        return label;
+    }
+
+    const left = Number(match[1]);
+    const right = Number(match[2]);
+
+    if (homeAway === 'home') {
+        return runningScoreLabel(homeAway, left + teamDelta, right + opponentDelta);
+    }
+
+    return runningScoreLabel(homeAway, right + teamDelta, left + opponentDelta);
+}
+
 function createCollectQueue() {
     return {
         wire: null,
@@ -104,12 +185,21 @@ function createCollectQueue() {
         ready: null,
         draining: false,
         failed: false,
+        autoRetryCount: 0,
+        maxAutoRetries: 5,
+        retryTimer: null,
+        syncChunkSize: 1,
+        syncTimeoutMs: 45000,
+        drainEpoch: 0,
+        lastSyncError: null,
         online: typeof navigator === 'undefined' || navigator.onLine,
         gameId: null,
         baseline: null,
         items: [],
         local: null,
         lines: [],
+        serverLines: [],
+        committedLines: [],
         sendingId: null,
         finishWhenEmpty: false,
         pendingType: null,
@@ -126,11 +216,19 @@ function createCollectQueue() {
         confirmingQuarterEnd: false,
         startingPeriod: false,
         editingPendingId: null,
+        editingEventId: null,
+        editingOriginalType: null,
         editingType: null,
         editingPlayerId: null,
+        editingOutgoingPlayerId: null,
         editingForOpponent: false,
         editingFoulKind: null,
         editingEventClock: null,
+        editingPlayerLines: [],
+        editingCourtX: null,
+        editingCourtY: null,
+        seconds: {},
+        playingMark: null,
 
         bind(wire) {
             this.wire = wire;
@@ -138,6 +236,10 @@ function createCollectQueue() {
         },
 
         refreshBaseline(retry = true) {
+            if (this.draining) {
+                return;
+            }
+
             const baseline = readBaseline();
 
             if (! baseline) {
@@ -148,20 +250,117 @@ function createCollectQueue() {
                 return;
             }
 
-            const gameChanged = this.gameId !== null && this.gameId !== baseline.gameId;
+            const nextGameId = normalizeGameId(baseline.gameId);
+            const gameChanged = this.gameId !== null && this.gameId !== nextGameId;
             this.baseline = baseline;
-            this.gameId = baseline.gameId;
+            this.gameId = nextGameId;
+            this.applyCommittedLines(baseline.lines);
 
             if (! this.ready || gameChanged) {
                 this.ready = this.prepare();
-                this.ready.then(() => this.drain());
+                this.ready.then(() => {
+                    this.adoptSeconds(baseline.seconds);
+                    this.drain();
+                });
 
                 return;
             }
 
-            if (! this.draining) {
-                this.replay();
+            this.replay();
+            this.adoptSeconds(baseline.seconds);
+        },
+
+        applyCommittedLines(lines) {
+            if (! Array.isArray(lines)) {
+                return;
             }
+
+            this.serverLines = lines;
+            this.committedLines = lines;
+        },
+
+        mergeSyncState(result) {
+            if (! result?.baseline || ! this.baseline) {
+                return;
+            }
+
+            Object.assign(this.baseline, result.baseline);
+            this.applyCommittedLines(result.baseline.lines);
+            this.adoptSeconds(result.baseline.seconds);
+            // Do not push gameClock from sync: a late offline backlog can carry an
+            // older (higher) clock and jump the pad backward without user action.
+
+            const node = document.querySelector('[data-collect-baseline]');
+
+            if (! node) {
+                return;
+            }
+
+            try {
+                const current = JSON.parse(node.textContent || '{}');
+                node.textContent = JSON.stringify({ ...current, ...result.baseline });
+            } catch {
+                // Keep the in-memory baseline when the DOM node is not JSON.
+            }
+        },
+
+        playingPeriodOpen() {
+            return Boolean(this.local?.periodOpen ?? this.baseline?.periodOpen);
+        },
+
+        adoptSeconds(seconds) {
+            this.seconds = normalizeSecondsMap(seconds);
+
+            const clock = window.Alpine?.store('gameClock');
+
+            if (clock?.running && this.playingPeriodOpen()) {
+                this.playingMark = clock.remaining;
+
+                return;
+            }
+
+            this.playingMark = null;
+        },
+
+        markPlayingStart(clockSeconds) {
+            if (! this.playingPeriodOpen()) {
+                this.playingMark = null;
+
+                return;
+            }
+
+            this.playingMark = Math.max(0, Number(clockSeconds) || 0);
+        },
+
+        accruePlayingTime(clockSeconds) {
+            if (this.playingMark === null || ! this.playingPeriodOpen()) {
+                this.playingMark = null;
+
+                return;
+            }
+
+            const mark = Math.max(0, Number(clockSeconds) || 0);
+            const delta = Math.max(0, this.playingMark - mark);
+            const court = this.local?.court ?? this.baseline?.court ?? [];
+            const next = { ...this.seconds };
+
+            court.forEach((playerId) => {
+                const id = Number(playerId);
+                next[id] = (next[id] ?? 0) + delta;
+            });
+
+            this.seconds = next;
+            this.playingMark = null;
+        },
+
+        playedSeconds(playerId) {
+            const id = Number(playerId);
+
+            return Number(this.seconds?.[id] ?? 0);
+        },
+
+        playedLabel(playerId) {
+            return formatPlayedSeconds(this.playedSeconds(playerId));
         },
 
         async prepare() {
@@ -191,8 +390,10 @@ function createCollectQueue() {
             let quarterEnded = this.baseline.quarterEnded;
             let periodOpen = this.baseline.periodOpen;
             let gameStarted = this.baseline.gameStarted;
-            let teamPoints = this.baseline.teamPoints ?? 0;
-            let opponentPoints = this.baseline.opponentPoints ?? 0;
+            const edited = this.overlayPendingEdits();
+            this.committedLines = edited.lines;
+            let teamPoints = (this.baseline.teamPoints ?? 0) + edited.teamDelta;
+            let opponentPoints = (this.baseline.opponentPoints ?? 0) + edited.opponentDelta;
             const lines = [];
 
             this.items.forEach((item) => {
@@ -245,25 +446,131 @@ function createCollectQueue() {
                 teamPoints,
                 opponentPoints,
             };
-            this.lines = lines.reverse();
+            this.lines = [...lines].reverse();
         },
 
-        async enqueue(operation, payload) {
+        // Server lines are never patched in place: queued edits are re-applied on
+        // every replay so they survive syncs of older items, failures and reloads.
+        overlayPendingEdits() {
+            const homeAway = this.baseline?.homeAway;
+            let lines = this.serverLines ?? [];
+            let teamDelta = 0;
+            let opponentDelta = 0;
+
+            this.items.forEach((item) => {
+                if (item.operation !== 'edit') {
+                    return;
+                }
+
+                const index = lines.findIndex((line) => Number(line.id) === Number(item.payload.eventId));
+                const current = index >= 0 ? lines[index] : null;
+                const before = current ?? item.revert ?? null;
+
+                if (! before) {
+                    return;
+                }
+
+                const [team, opponent] = this.editPointsDelta(before, item.payload);
+                teamDelta += team;
+                opponentDelta += opponent;
+
+                if (index < 0) {
+                    return;
+                }
+
+                const next = this.editedLine(current, item.payload);
+
+                lines = lines.map((line, position) => {
+                    if (position > index) {
+                        return line;
+                    }
+
+                    const base = position === index ? next : line;
+
+                    return { ...base, score: shiftScoreLabel(base.score, homeAway, team, opponent) };
+                });
+            });
+
+            return { lines, teamDelta, opponentDelta };
+        },
+
+        editPointsDelta(before, after) {
+            const oldPoints = pointsFor(before.type ?? before.actionKey);
+            const newPoints = pointsFor(after.type);
+            let team = 0;
+            let opponent = 0;
+
+            if (before.forOpponent) {
+                opponent -= oldPoints;
+            } else {
+                team -= oldPoints;
+            }
+
+            if (after.forOpponent) {
+                opponent += newPoints;
+            } else {
+                team += newPoints;
+            }
+
+            return [team, opponent];
+        },
+
+        releaseStuckDrainFlag() {
+            // A hung Livewire request can leave draining=true forever after sendingId clears.
+            if (this.draining && this.sendingId === null) {
+                this.draining = false;
+            }
+        },
+
+        async enqueue(operation, payload, meta = {}) {
             await this.ready;
+
+            const plainMeta = {};
+
+            Object.entries(meta).forEach(([key, value]) => {
+                plainMeta[key] = toPlain(value);
+            });
 
             const item = {
                 id: crypto.randomUUID(),
-                gameId: this.gameId,
+                gameId: normalizeGameId(this.gameId),
                 seq: this.items.reduce((max, queued) => Math.max(max, queued.seq ?? 0), 0) + 1,
                 operation,
-                payload,
+                payload: toPlain(payload) ?? {},
+                ...plainMeta,
             };
 
             this.items.push(item);
-            await putItem(this.database, item);
-            this.failed = false;
+            await putItem(this.database, durableQueueItem(item));
+            this.clearSyncFailure();
             this.replay();
+            this.releaseStuckDrainFlag();
             this.drain();
+        },
+
+        cancelFor(item) {
+            const payload = { targetId: item.id };
+
+            if (item.operation === 'edit' && item.revert) {
+                payload.revert = toPlain(item.revert);
+            }
+
+            return {
+                id: crypto.randomUUID(),
+                gameId: item.gameId,
+                seq: item.seq,
+                operation: 'cancel',
+                payload,
+            };
+        },
+
+        // A sent item may have been applied even when no answer arrived, so it is
+        // replaced by a cancel that the server resolves either way.
+        async replaceWithCancel(item) {
+            const cancel = this.cancelFor(item);
+            this.items = this.items.map((queued) => (queued.id === item.id ? cancel : queued));
+            await putItem(this.database, durableQueueItem(cancel));
+            await deleteItem(this.database, item.id);
         },
 
         async remove(id) {
@@ -274,37 +581,236 @@ function createCollectQueue() {
             }
         },
 
-        async drain() {
-            if (this.draining || ! this.wire || ! this.database) {
+        reattachWire() {
+            const wire = window.resolveStatisticsRecordWire?.();
+
+            if (wire) {
+                this.wire = wire;
+            }
+        },
+
+        clearSyncFailure() {
+            this.failed = false;
+            this.autoRetryCount = 0;
+            this.clearRetryTimer();
+        },
+
+        clearRetryTimer() {
+            if (this.retryTimer !== null) {
+                clearTimeout(this.retryTimer);
+                this.retryTimer = null;
+            }
+        },
+
+        showSyncError() {
+            return this.online
+                && this.failed
+                && this.retryTimer === null
+                && this.autoRetryCount >= this.maxAutoRetries
+                && this.items.length > 0;
+        },
+
+        showSyncRetrying() {
+            return this.online
+                && this.failed
+                && this.retryTimer !== null
+                && this.items.length > 0;
+        },
+
+        scheduleAutoRetry() {
+            if (! this.online || this.items.length === 0 || this.autoRetryCount >= this.maxAutoRetries) {
                 return;
             }
 
-            this.draining = true;
+            this.clearRetryTimer();
 
-            try {
-                while (this.items.length > 0) {
-                    const item = this.items[0];
-                    this.sendingId = item.id;
+            const delays = [2000, 5000, 10000, 20000, 30000];
+            const delay = delays[this.autoRetryCount] ?? 30000;
+            this.autoRetryCount += 1;
 
-                    try {
-                        await this.wire.applyCollectedAction(item.id, item.operation, item.payload);
-                        this.failed = false;
-                        await this.remove(item.id);
-                        this.replay();
-                    } catch {
-                        this.failed = true;
-                        this.sendingId = null;
-                        break;
-                    }
+            this.retryTimer = setTimeout(() => {
+                this.retryTimer = null;
+                this.failed = false;
+                this.reattachWire();
+                this.drain();
+            }, delay);
+        },
 
-                    this.sendingId = null;
-                }
-            } finally {
-                this.draining = false;
-                this.refreshBaseline();
+        retrySync() {
+            if (! this.online || this.items.length === 0) {
+                return;
             }
 
-            if (! this.failed && this.items.length > 0) {
+            // Invalidate any in-flight drain loop, then start a fresh one.
+            this.drainEpoch += 1;
+            this.draining = false;
+            this.sendingId = null;
+            this.clearSyncFailure();
+            this.reattachWire();
+            this.drain();
+        },
+
+        async consumeSyncResult(result) {
+            const applied = new Set(result?.applied ?? []);
+
+            if (applied.size === 0) {
+                return applied;
+            }
+
+            for (const item of [...this.items]) {
+                if (! applied.has(item.id)) {
+                    continue;
+                }
+
+                await this.remove(item.id);
+            }
+
+            this.mergeSyncState(result);
+            this.replay();
+
+            return applied;
+        },
+
+        async sendBatch(batch) {
+            this.reattachWire();
+
+            if (! this.wire || typeof this.wire.applyCollectedActions !== 'function') {
+                throw new Error('collect wire unavailable');
+            }
+
+            const payload = batch.map((item) => ({
+                id: item.id,
+                operation: item.operation,
+                payload: item.payload,
+            }));
+
+            let timer = null;
+
+            try {
+                return await Promise.race([
+                    this.wire.applyCollectedActions(payload),
+                    new Promise((_, reject) => {
+                        timer = setTimeout(() => reject(new Error('sync timeout')), this.syncTimeoutMs);
+                    }),
+                ]);
+            } finally {
+                if (timer !== null) {
+                    clearTimeout(timer);
+                }
+            }
+        },
+
+        async drain() {
+            this.reattachWire();
+
+            if (this.ready) {
+                await this.ready;
+            }
+
+            if (this.draining || ! this.online) {
+                return;
+            }
+
+            if (! this.database && this.gameId !== null && this.gameId !== undefined) {
+                this.database = await openDatabase();
+                const rows = await itemsForGame(this.database, this.gameId);
+
+                if (rows.length > 0 && this.items.length === 0) {
+                    this.items = rows;
+                    this.replay();
+                }
+            }
+
+            if (! this.database) {
+                return;
+            }
+
+            if (! this.wire || typeof this.wire.applyCollectedActions !== 'function') {
+                if (this.items.length > 0) {
+                    this.failed = true;
+                    this.lastSyncError = 'wire unavailable';
+                    this.scheduleAutoRetry();
+                }
+
+                return;
+            }
+
+            const epoch = ++this.drainEpoch;
+            this.draining = true;
+            this.clearRetryTimer();
+            this.lastSyncError = null;
+
+            try {
+                while (this.items.length > 0 && this.online && epoch === this.drainEpoch) {
+                    const batch = this.items.slice(0, this.syncChunkSize);
+                    const head = batch[0] ?? null;
+                    this.sendingId = head?.id ?? null;
+
+                    try {
+                        if (head && ! head.attempted) {
+                            head.attempted = true;
+                            await putItem(this.database, durableQueueItem(head));
+                        }
+
+                        const result = await this.sendBatch(batch);
+
+                        // Undo replaced the in-flight head with a cancel, which reverses
+                        // a late server apply on its own.
+                        if (epoch !== this.drainEpoch) {
+                            return;
+                        }
+
+                        const applied = await this.consumeSyncResult(result);
+
+                        if (applied.size >= batch.length) {
+                            this.failed = false;
+                            this.lastSyncError = null;
+                            continue;
+                        }
+
+                        // Keep FIFO order: never skip the head. A rejected action must
+                        // block the rest of the queue until it can be applied or fixed.
+                        this.failed = true;
+                        this.lastSyncError = result?.error ?? 'partial apply';
+                        console.warn('[collectQueue] head action rejected — queue paused', {
+                            id: head?.id,
+                            operation: head?.operation,
+                            error: this.lastSyncError,
+                            payload: head?.payload,
+                        });
+                        break;
+                    } catch (error) {
+                        if (epoch !== this.drainEpoch) {
+                            return;
+                        }
+
+                        this.failed = true;
+                        this.lastSyncError = error?.message ?? 'sync failed';
+                        console.warn('[collectQueue] sync failed', error);
+                        break;
+                    } finally {
+                        if (epoch === this.drainEpoch) {
+                            this.sendingId = null;
+                        }
+                    }
+                }
+            } finally {
+                if (epoch === this.drainEpoch) {
+                    this.draining = false;
+                }
+            }
+
+            if (epoch !== this.drainEpoch) {
+                return;
+            }
+
+            if (this.failed) {
+                this.scheduleAutoRetry();
+            } else {
+                this.autoRetryCount = 0;
+            }
+
+            if (! this.failed && this.items.length > 0 && this.online) {
                 this.drain();
             }
 
@@ -471,8 +977,23 @@ function createCollectQueue() {
             return this.local.periodOpen;
         },
 
+        isSaving() {
+            return this.online
+                && this.items.length > 0
+                && ! this.showSyncError()
+                && ! this.showSyncRetrying();
+        },
+
         canUndo() {
-            return this.removableItem() !== null || this.sendingId !== null || Boolean(this.baseline?.canUndo);
+            if (this.isSaving()) {
+                return false;
+            }
+
+            if (this.removableItem() !== null) {
+                return true;
+            }
+
+            return this.items.length === 0 && Boolean(this.baseline?.canUndo);
         },
 
         periodDiffers() {
@@ -534,6 +1055,16 @@ function createCollectQueue() {
 
         clock() {
             return window.Alpine.store('gameClock')?.formatted ?? '00:00';
+        },
+
+        substitutionButtonLabel(fallback) {
+            const templates = this.baseline?.templates ?? {};
+
+            if (! this.local) {
+                return fallback;
+            }
+
+            return (this.local.gameStarted ? templates.substitutionButton : templates.lineupButton) ?? fallback;
         },
 
         select(type) {
@@ -617,9 +1148,36 @@ function createCollectQueue() {
             return Array.from({ length: this.foulCount(playerId) }, (_, index) => index);
         },
 
+        isEditingShot() {
+            return this.choosingShot
+                && (this.editingPendingId !== null || this.editingEventId !== null);
+        },
+
+        shotType() {
+            if (this.isEditingShot()) {
+                return this.editingType;
+            }
+
+            return this.pendingType;
+        },
+
+        editNeedsNewShot(type, courtX, courtY) {
+            if (! this.needsShot(type)) {
+                return false;
+            }
+
+            if (courtX === null || courtX === undefined || courtY === null || courtY === undefined) {
+                return true;
+            }
+
+            return ! this.allowsShot(type, Number(courtX), Number(courtY));
+        },
+
         pickerTitle() {
-            return this.baseline?.pickerTitles?.[this.pendingType]
-                ?? this.baseline?.labels?.[this.pendingType]
+            const type = this.shotType();
+
+            return this.baseline?.pickerTitles?.[type]
+                ?? this.baseline?.labels?.[type]
                 ?? '';
         },
 
@@ -668,17 +1226,21 @@ function createCollectQueue() {
                 return;
             }
 
+            const type = this.pendingType;
+            const foulKind = type === 'foul' ? this.pendingFoulKind : null;
+            const quarter = this.local.quarter;
+            const clock = this.clock();
+            this.closePicker();
             await this.enqueue('record', {
-                type: this.pendingType,
+                type,
                 playerId,
                 forOpponent: false,
-                foulKind: this.pendingType === 'foul' ? this.pendingFoulKind : null,
-                quarter: this.local.quarter,
-                clock: this.clock(),
+                foulKind,
+                quarter,
+                clock,
                 courtX: null,
                 courtY: null,
             });
-            this.closePicker();
         },
 
         async recordOpponent() {
@@ -692,17 +1254,21 @@ function createCollectQueue() {
                 return;
             }
 
+            const type = this.pendingType;
+            const foulKind = type === 'foul' ? this.pendingFoulKind : null;
+            const quarter = this.local.quarter;
+            const clock = this.clock();
+            this.closePicker();
             await this.enqueue('record', {
-                type: this.pendingType,
+                type,
                 playerId: null,
                 forOpponent: true,
-                foulKind: this.pendingType === 'foul' ? this.pendingFoulKind : null,
-                quarter: this.local.quarter,
-                clock: this.clock(),
+                foulKind,
+                quarter,
+                clock,
                 courtX: null,
                 courtY: null,
             });
-            this.closePicker();
         },
 
         async recordCoach() {
@@ -710,21 +1276,26 @@ function createCollectQueue() {
                 return;
             }
 
+            const foulKind = this.pendingFoulKind;
+            const quarter = this.local.quarter;
+            const clock = this.clock();
+            this.closePicker();
             await this.enqueue('record', {
                 type: 'foul',
                 playerId: null,
                 forOpponent: false,
-                foulKind: this.pendingFoulKind,
-                quarter: this.local.quarter,
-                clock: this.clock(),
+                foulKind,
+                quarter,
+                clock,
                 courtX: null,
                 courtY: null,
             });
-            this.closePicker();
         },
 
         async recordShot(courtX, courtY) {
-            if (! this.allowsShot(this.pendingType, courtX, courtY)) {
+            const type = this.shotType();
+
+            if (! this.allowsShot(type, courtX, courtY)) {
                 this.shotError = true;
 
                 return false;
@@ -732,17 +1303,35 @@ function createCollectQueue() {
 
             this.shotError = false;
 
+            if (this.editingPendingId !== null) {
+                await this.savePendingEdit({ courtX, courtY });
+
+                return true;
+            }
+
+            if (this.editingEventId !== null) {
+                this.editingCourtX = courtX;
+                this.editingCourtY = courtY;
+                await this.saveConfirmedEdit({ courtX, courtY });
+
+                return true;
+            }
+
+            const playerId = this.shotForOpponent ? null : this.shotPlayerId;
+            const forOpponent = this.shotForOpponent;
+            const quarter = this.local.quarter;
+            const clock = this.clock();
+            this.closePicker();
             await this.enqueue('record', {
-                type: this.pendingType,
-                playerId: this.shotForOpponent ? null : this.shotPlayerId,
-                forOpponent: this.shotForOpponent,
+                type,
+                playerId,
+                forOpponent,
                 foulKind: null,
-                quarter: this.local.quarter,
-                clock: this.clock(),
+                quarter,
+                clock,
                 courtX,
                 courtY,
             });
-            this.closePicker();
 
             return true;
         },
@@ -759,6 +1348,11 @@ function createCollectQueue() {
         cancelShot() {
             this.choosingShot = false;
             this.shotError = false;
+
+            if (this.editingPendingId !== null || this.editingEventId !== null) {
+                return;
+            }
+
             this.shotPlayerId = null;
             this.shotForOpponent = false;
             this.choosingPlayer = this.pendingType !== null;
@@ -887,10 +1481,12 @@ function createCollectQueue() {
         },
 
         removableItem() {
+            // Newest user action, edits included. Server undo and cancel items are
+            // bookkeeping and cannot be undone themselves.
             for (let index = this.items.length - 1; index >= 0; index -= 1) {
                 const item = this.items[index];
 
-                if (item.id === this.sendingId || item.operation === 'undo' || item.operation === 'edit') {
+                if (item.operation === 'undo' || item.operation === 'cancel') {
                     continue;
                 }
 
@@ -901,44 +1497,280 @@ function createCollectQueue() {
         },
 
         async undo() {
-            const item = this.removableItem();
-
-            if (item) {
-                await this.remove(item.id);
-                this.replay();
-
-                return;
-            }
-
             if (! this.canUndo()) {
                 return;
             }
 
-            await this.enqueue('undo', {});
+            const item = this.removableItem();
+
+            if (! item) {
+                await this.enqueue('undo', {});
+
+                return;
+            }
+
+            const cancelledSend = item.id === this.sendingId;
+
+            if (cancelledSend) {
+                this.drainEpoch += 1;
+                this.draining = false;
+                this.sendingId = null;
+            }
+
+            if (item.attempted || cancelledSend) {
+                await this.replaceWithCancel(item);
+            } else {
+                await this.remove(item.id);
+            }
+
+            this.replay();
+            this.clearSyncFailure();
+
+            if (this.items.length > 0 && this.online) {
+                this.releaseStuckDrainFlag();
+                this.drain();
+            }
         },
 
-        async saveConfirmedEdit() {
-            const eventId = this.wire?.editingEventId;
-            const type = this.wire?.editingType;
+        isEditing() {
+            return this.editingPendingId !== null || this.editingEventId !== null;
+        },
+
+        closeEdit() {
+            this.editingPendingId = null;
+            this.editingEventId = null;
+            this.editingOriginalType = null;
+            this.editingType = null;
+            this.editingPlayerId = null;
+            this.editingOutgoingPlayerId = null;
+            this.editingForOpponent = false;
+            this.editingFoulKind = null;
+            this.editingEventClock = null;
+            this.editingPlayerLines = [];
+            this.editingCourtX = null;
+            this.editingCourtY = null;
+            this.choosingShot = false;
+            this.shotError = false;
+        },
+
+        async saveEdit() {
+            if (this.editingPendingId !== null) {
+                await this.savePendingEdit();
+
+                return;
+            }
+
+            if (this.editingEventId !== null) {
+                await this.saveConfirmedEdit();
+            }
+        },
+
+        normalizeEditClock(value) {
+            if (typeof value !== 'string') {
+                return null;
+            }
+
+            const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
+
+            if (! match) {
+                return null;
+            }
+
+            const minutes = Number(match[1]);
+            const seconds = Number(match[2]);
+
+            if (minutes > 99 || seconds > 59) {
+                return null;
+            }
+
+            return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        },
+
+        async saveConfirmedEdit(shot = null) {
+            const eventId = this.editingEventId;
+            const type = this.editingType;
 
             if (! eventId || ! type) {
                 return;
             }
 
-            await this.enqueue('edit', {
-                eventId,
+            const clock = this.normalizeEditClock(this.editingEventClock);
+
+            if (! clock) {
+                this.lastSyncError = 'invalid clock';
+
+                return;
+            }
+
+            const originalType = this.editingOriginalType ?? type;
+            const groups = this.baseline?.typeSwapGroups ?? [];
+            const group = groups.find((options) => options.includes(originalType));
+
+            if (type !== originalType && type !== 'timeout' && type !== 'substitution' && (! group || ! group.includes(type))) {
+                return;
+            }
+
+            const forCoach = type === 'foul'
+                && this.editingFoulKind === 'technical'
+                && ! this.editingForOpponent
+                && (this.editingPlayerId === null || this.editingPlayerId === undefined);
+
+            if (type === 'substitution') {
+                if (! this.editingPlayerId || ! this.editingOutgoingPlayerId) {
+                    return;
+                }
+            } else if (type !== 'timeout' && ! this.editingForOpponent && ! forCoach && ! this.editingPlayerId) {
+                return;
+            }
+
+            const courtX = shot?.courtX ?? this.editingCourtX ?? null;
+            const courtY = shot?.courtY ?? this.editingCourtY ?? null;
+
+            if (this.editNeedsNewShot(type, courtX, courtY)) {
+                this.shotError = false;
+                this.choosingShot = true;
+
+                return;
+            }
+
+            const forOpponent = Boolean(this.editingForOpponent);
+            const playerId = type === 'substitution'
+                ? this.editingPlayerId
+                : (forOpponent || forCoach ? null : this.editingPlayerId);
+            const needsShot = this.needsShot(type);
+            const payload = {
+                eventId: Number(eventId),
                 type,
-                playerId: this.wire.editingForOpponent ? null : this.wire.editingPlayerId,
-                outgoingPlayerId: this.wire.editingOutgoingPlayerId,
-                forOpponent: Boolean(this.wire.editingForOpponent),
-                foulKind: type === 'foul' ? (this.wire.editingFoulKind ?? null) : null,
-                clock: this.wire.editingEventClock,
-            });
-            this.wire.cancelEditingAction();
+                playerId,
+                outgoingPlayerId: type === 'substitution' ? this.editingOutgoingPlayerId : null,
+                forOpponent,
+                foulKind: type === 'foul' ? (this.editingFoulKind ?? null) : null,
+                clock,
+                courtX: needsShot ? courtX : null,
+                courtY: needsShot ? courtY : null,
+            };
+            const previous = this.committedLines.find((line) => Number(line.id) === Number(eventId));
+            this.closeEdit();
+            await this.enqueue('edit', payload, previous ? { revert: this.revertFor(previous) } : {});
+        },
+
+        revertFor(line) {
+            const type = line.type ?? line.actionKey;
+            const forOpponent = Boolean(line.forOpponent);
+
+            return {
+                eventId: Number(line.id),
+                type,
+                playerId: forOpponent ? null : (line.playerId ?? null),
+                outgoingPlayerId: type === 'substitution' ? (line.outgoingPlayerId ?? null) : null,
+                forOpponent,
+                foulKind: type === 'foul' ? (line.foulKind ?? null) : null,
+                clock: line.clock,
+                courtX: line.courtX ?? null,
+                courtY: line.courtY ?? null,
+            };
+        },
+
+        editedLine(current, payload) {
+            const forOpponent = Boolean(payload.forOpponent);
+            const homeAway = this.baseline?.homeAway;
+            let player = this.baseline?.opponentName ?? '';
+            let playerKeys = ['opponent'];
+
+            if (payload.type === 'substitution') {
+                player = '';
+                playerKeys = current.playerKeys ?? [];
+            } else if (payload.type === 'timeout') {
+                player = forOpponent ? (this.baseline?.opponentName ?? '') : (this.baseline?.teamName ?? '');
+                playerKeys = forOpponent ? ['opponent'] : ['team'];
+            } else if (! forOpponent) {
+                if (payload.playerId) {
+                    const rosterPlayer = (this.baseline?.roster ?? []).find((entry) => entry.id === Number(payload.playerId));
+                    player = rosterPlayer?.label ?? rosterPlayer?.name ?? '';
+                    playerKeys = [`player:${Number(payload.playerId)}`];
+                } else if (payload.type === 'foul') {
+                    player = this.baseline?.coachBenchLabel ?? 'Coach / Bench';
+                    playerKeys = ['coach'];
+                } else {
+                    player = this.baseline?.teamName ?? '';
+                    playerKeys = ['team'];
+                }
+            }
+
+            const label = payload.type === 'foul'
+                ? this.foulKindLabel(payload.foulKind ?? null)
+                : (this.baseline?.labels?.[payload.type] ?? payload.type);
+
+            return {
+                ...current,
+                clock: payload.clock ?? current.clock,
+                type: payload.type,
+                actionKey: payload.type,
+                playerId: payload.playerId,
+                outgoingPlayerId: payload.outgoingPlayerId,
+                forOpponent,
+                foulKind: payload.foulKind,
+                courtX: Object.prototype.hasOwnProperty.call(payload, 'courtX') ? payload.courtX : current.courtX,
+                courtY: Object.prototype.hasOwnProperty.call(payload, 'courtY') ? payload.courtY : current.courtY,
+                player,
+                playerKeys,
+                label,
+                missed: String(payload.type).includes('missed'),
+                side: payload.type === 'substitution'
+                    ? current.side
+                    : (forOpponent ? oppositeSide(homeAway) : homeAway),
+                playerLines: payload.type === 'substitution' ? (current.playerLines ?? []) : [],
+            };
+        },
+
+        // The server only accepts a player who was on the court when the action happened.
+        editRoster() {
+            const roster = this.baseline?.roster ?? [];
+            let court = (this.baseline?.court ?? []).map((id) => Number(id));
+
+            if (this.editingEventId !== null) {
+                const lines = this.serverLines ?? [];
+                const index = lines.findIndex((line) => Number(line.id) === Number(this.editingEventId));
+
+                if (index < 0) {
+                    return roster;
+                }
+
+                // Lines are newest first: walk back over later substitutions.
+                lines.slice(0, index).forEach((line) => {
+                    if (line.type !== 'substitution' || ! line.playerId || ! line.outgoingPlayerId) {
+                        return;
+                    }
+
+                    court = court.filter((id) => id !== Number(line.playerId));
+
+                    if (! court.includes(Number(line.outgoingPlayerId))) {
+                        court.push(Number(line.outgoingPlayerId));
+                    }
+                });
+
+                return roster.filter((player) => court.includes(Number(player.id)));
+            }
+
+            if (this.editingPendingId === null) {
+                return roster;
+            }
+
+            for (const item of this.items) {
+                if (item.id === this.editingPendingId) {
+                    break;
+                }
+
+                if (item.operation === 'substitution') {
+                    court = (item.payload.playerIds ?? []).map((id) => Number(id));
+                }
+            }
+
+            return roster.filter((player) => court.includes(Number(player.id)));
         },
 
         editableTypesForEdit() {
-            const current = this.editingType;
+            const current = this.editingOriginalType ?? this.editingType;
             const groups = this.baseline?.typeSwapGroups ?? [];
             const group = groups.find((options) => options.includes(current));
 
@@ -956,12 +1788,41 @@ function createCollectQueue() {
                 return;
             }
 
+            this.editingEventId = null;
             this.editingPendingId = id;
+            this.editingOriginalType = item.payload.type;
             this.editingType = item.payload.type;
             this.editingPlayerId = item.payload.playerId;
+            this.editingOutgoingPlayerId = null;
             this.editingForOpponent = Boolean(item.payload.forOpponent);
             this.editingFoulKind = item.payload.foulKind ?? null;
             this.editingEventClock = item.payload.clock;
+            this.editingPlayerLines = [];
+            this.editingCourtX = item.payload.courtX ?? null;
+            this.editingCourtY = item.payload.courtY ?? null;
+            this.choosingShot = false;
+            this.shotError = false;
+        },
+
+        editCommitted(line) {
+            if (! line?.editable) {
+                return;
+            }
+
+            this.editingPendingId = null;
+            this.editingEventId = line.id;
+            this.editingOriginalType = line.type ?? line.actionKey;
+            this.editingType = line.type ?? line.actionKey;
+            this.editingPlayerId = line.playerId ?? null;
+            this.editingOutgoingPlayerId = line.outgoingPlayerId ?? null;
+            this.editingForOpponent = Boolean(line.forOpponent);
+            this.editingFoulKind = line.foulKind ?? null;
+            this.editingEventClock = line.clock;
+            this.editingPlayerLines = line.playerLines ?? [];
+            this.editingCourtX = line.courtX ?? null;
+            this.editingCourtY = line.courtY ?? null;
+            this.choosingShot = false;
+            this.shotError = false;
         },
 
         setEditingFoulKind(kind) {
@@ -980,26 +1841,27 @@ function createCollectQueue() {
             return this.editingType === 'foul' && this.editingFoulKind === 'technical';
         },
 
-        async savePendingEdit() {
+        async savePendingEdit(shot = null) {
             const item = this.items.find((queued) => queued.id === this.editingPendingId);
 
             if (! item || item.id === this.sendingId) {
                 return;
             }
 
+            const clock = this.normalizeEditClock(this.editingEventClock ?? item.payload.clock);
+
+            if (! clock) {
+                this.lastSyncError = 'invalid clock';
+
+                return;
+            }
+
             const type = this.editingType;
-            const originalType = item.payload.type;
+            const originalType = this.editingOriginalType ?? item.payload.type;
             const groups = this.baseline?.typeSwapGroups ?? [];
             const group = groups.find((options) => options.includes(originalType));
 
             if (type !== originalType && (! group || ! group.includes(type))) {
-                return;
-            }
-
-            const needsShot = this.needsShot(type);
-            const hasShot = item.payload.courtX !== null && item.payload.courtY !== null;
-
-            if (needsShot && ! hasShot) {
                 return;
             }
 
@@ -1012,23 +1874,65 @@ function createCollectQueue() {
                 return;
             }
 
-            item.payload = {
+            const courtX = shot?.courtX ?? this.editingCourtX ?? item.payload.courtX ?? null;
+            const courtY = shot?.courtY ?? this.editingCourtY ?? item.payload.courtY ?? null;
+            const needsShot = this.needsShot(type);
+
+            // 3P↔2P keeps old coordinates; server rejects mismatched zones and blocks the queue.
+            if (this.editNeedsNewShot(type, courtX, courtY)) {
+                this.shotError = false;
+                this.choosingShot = true;
+
+                return;
+            }
+
+            const payload = toPlain({
                 ...item.payload,
                 type,
                 playerId: this.editingForOpponent || forCoach ? null : this.editingPlayerId,
                 forOpponent: this.editingForOpponent,
                 foulKind: type === 'foul' ? this.editingFoulKind : null,
-                clock: this.editingEventClock ?? item.payload.clock,
-            };
-            await putItem(this.database, item);
-            this.editingPendingId = null;
-            this.editingFoulKind = null;
+                clock,
+                courtX: needsShot ? courtX : null,
+                courtY: needsShot ? courtY : null,
+            }) ?? {};
+
+            if (item.attempted) {
+                // The server ignores a reused id, so a sent record is cancelled and
+                // re-recorded in the same queue position instead of changed in place.
+                const index = this.items.findIndex((queued) => queued.id === item.id);
+                const nextSeq = this.items[index + 1]?.seq ?? item.seq + 1;
+                const cancel = this.cancelFor(item);
+                const record = {
+                    id: crypto.randomUUID(),
+                    gameId: item.gameId,
+                    seq: (item.seq + nextSeq) / 2,
+                    operation: 'record',
+                    payload,
+                };
+                this.items = [...this.items.slice(0, index), cancel, record, ...this.items.slice(index + 1)];
+                await putItem(this.database, durableQueueItem(cancel));
+                await putItem(this.database, durableQueueItem(record));
+                await deleteItem(this.database, item.id);
+            } else {
+                const updated = { ...durableQueueItem(item), payload };
+                this.items = this.items.map((queued) => (queued.id === updated.id ? updated : queued));
+                await putItem(this.database, durableQueueItem(updated));
+            }
+
+            this.choosingShot = false;
+            this.shotError = false;
             this.replay();
+            this.closeEdit();
+            this.clearSyncFailure();
+            this.releaseStuckDrainFlag();
+            this.drain();
         },
 
         finishGame() {
             if (this.items.length > 0) {
                 this.finishWhenEmpty = true;
+                this.releaseStuckDrainFlag();
                 this.drain();
 
                 return;
@@ -1155,6 +2059,8 @@ function registerCollectQueue() {
         }
 
         queue.online = true;
+        queue.clearSyncFailure();
+        queue.reattachWire();
         queue.drain();
     });
 
@@ -1166,6 +2072,7 @@ function registerCollectQueue() {
         }
 
         queue.online = false;
+        queue.clearRetryTimer();
     });
 }
 

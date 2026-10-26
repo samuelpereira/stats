@@ -3,6 +3,7 @@
     'teamName',
     'opponentName' => null,
     'showGp' => false,
+    'showPlusMinus' => true,
     'wireKeyPrefix' => 'box',
 ])
 
@@ -28,7 +29,9 @@
                 <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('BLK') }}</th>
                 <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('STL') }}</th>
                 <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('TO') }}</th>
-                <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('+/-') }}</th>
+                @if ($showPlusMinus)
+                    <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('+/-') }}</th>
+                @endif
                 <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('PF') }}</th>
                 <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('TF') }}</th>
                 <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('Min') }}</th>
@@ -58,7 +61,9 @@
                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['blocks'] }}</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['steals'] }}</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['turnovers'] }}</td>
-                    <td class="px-2 py-2 text-center tabular-nums">{{ $player['plusMinus'] > 0 ? '+'.$player['plusMinus'] : $player['plusMinus'] }}</td>
+                    @if ($showPlusMinus)
+                        <td class="px-2 py-2 text-center tabular-nums">{{ $player['plusMinus'] > 0 ? '+'.$player['plusMinus'] : $player['plusMinus'] }}</td>
+                    @endif
                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['fouls'] }}</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['technicalFouls'] }}</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['minutes'] }}</td>
@@ -83,7 +88,9 @@
                 <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['team']['blocks'] }}</td>
                 <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['team']['steals'] }}</td>
                 <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['team']['turnovers'] }}</td>
-                <td class="px-2 py-2 text-center text-zinc-400">—</td>
+                @if ($showPlusMinus)
+                    <td class="px-2 py-2 text-center text-zinc-400">—</td>
+                @endif
                 <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['team']['fouls'] }}</td>
                 <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['team']['technicalFouls'] }}</td>
                 <td class="px-2 py-2 text-center text-zinc-400">—</td>
@@ -108,7 +115,9 @@
                     <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['opponent']['blocks'] }}</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['opponent']['steals'] }}</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['opponent']['turnovers'] }}</td>
-                    <td class="px-2 py-2 text-center text-zinc-400">—</td>
+                    @if ($showPlusMinus)
+                        <td class="px-2 py-2 text-center text-zinc-400">—</td>
+                    @endif
                     <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['opponent']['fouls'] }}</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['opponent']['technicalFouls'] }}</td>
                     <td class="px-2 py-2 text-center text-zinc-400">—</td>

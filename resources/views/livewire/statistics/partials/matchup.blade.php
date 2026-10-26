@@ -2,7 +2,6 @@
     <div class="mb-4 flex items-center justify-between gap-3">
         <div>
             <h2 class="text-base font-semibold">{{ __('Matchup') }}</h2>
-            <p class="text-sm text-zinc-500">{{ __('Stat comparison vs opponent') }}</p>
         </div>
         <div class="flex min-w-0 items-center gap-4 text-xs font-medium text-zinc-500">
             <span class="flex min-w-0 items-center gap-2">

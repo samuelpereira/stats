@@ -586,6 +586,42 @@ class Game extends Model
     }
 
     /**
+     * Players on the court when the given event was logged.
+     *
+     * @return list<int>
+     */
+    public function courtAt(GameEvent $event): array
+    {
+        $lineup = [];
+
+        foreach ($this->players()->wherePivot('starter', true)->pluck('players.id') as $playerId) {
+            $lineup[] = (int) $playerId;
+        }
+
+        $earlierEvents = $this->events()
+            ->chronological()
+            ->get(['id', 'type', 'quarter', 'clock', 'player_id', 'outgoing_player_id']);
+
+        foreach ($earlierEvents as $earlier) {
+            if ($earlier->id === $event->id) {
+                break;
+            }
+
+            if ($earlier->type !== StatType::Substitution || $earlier->player_id === null || $earlier->outgoing_player_id === null) {
+                continue;
+            }
+
+            $lineup = array_values(array_filter($lineup, fn (int $playerId): bool => $playerId !== (int) $earlier->outgoing_player_id));
+
+            if (! in_array((int) $earlier->player_id, $lineup, true)) {
+                $lineup[] = (int) $earlier->player_id;
+            }
+        }
+
+        return $lineup;
+    }
+
+    /**
      * Who is on the court, and how many seconds each squad player has played.
      *
      * @return array{court: list<int>, seconds: array<int, int>}

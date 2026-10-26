@@ -7,6 +7,7 @@ use App\Enums\StatType;
 use App\Models\Game;
 use App\Models\GameEvent;
 use App\Models\Player;
+use App\Support\ShotCourt;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Validation\ValidationException;
 
@@ -21,6 +22,9 @@ class UpdateGameEventType
         ?int $outgoingPlayerId = null,
         bool $forOpponent = false,
         ?FoulKind $foulKind = null,
+        ?int $courtX = null,
+        ?int $courtY = null,
+        bool $courtProvided = false,
     ): void {
         $event = $game->events()->whereKey($eventId)->first();
 
@@ -42,7 +46,7 @@ class UpdateGameEventType
             return;
         }
 
-        $this->updateStat($game, $event, $type, $playerId, $forOpponent, $clock, $foulKind);
+        $this->updateStat($game, $event, $type, $playerId, $forOpponent, $clock, $foulKind, $courtX, $courtY, $courtProvided);
     }
 
     private function updateSubstitution(GameEvent $event, StatType $type, string $clock): void
@@ -88,6 +92,9 @@ class UpdateGameEventType
         bool $forOpponent,
         string $clock,
         ?FoulKind $foulKind,
+        ?int $courtX = null,
+        ?int $courtY = null,
+        bool $courtProvided = false,
     ): void {
         if (! $event->type->isAssignableStat() || ! $event->type->canSwapTo($type)) {
             throw (new ModelNotFoundException)->setModel(GameEvent::class, [$event->id]);
@@ -97,6 +104,8 @@ class UpdateGameEventType
             $foulKind = null;
         }
 
+        [$nextCourtX, $nextCourtY] = $this->courtForType($game, $event, $type, $courtX, $courtY, $courtProvided);
+
         if ($forOpponent) {
             $event->update([
                 'type' => $type,
@@ -105,6 +114,8 @@ class UpdateGameEventType
                 'home_away' => $game->sideFor(true),
                 'foul_kind' => $foulKind,
                 'clock' => $clock,
+                'court_x' => $nextCourtX,
+                'court_y' => $nextCourtY,
             ]);
 
             return;
@@ -122,12 +133,20 @@ class UpdateGameEventType
                 'home_away' => $game->home_away,
                 'foul_kind' => $foulKind,
                 'clock' => $clock,
+                'court_x' => $nextCourtX,
+                'court_y' => $nextCourtY,
             ]);
 
             return;
         }
 
         $player = $this->squadPlayer($game, $playerId);
+
+        if ($player->id !== $event->player_id && ! in_array($player->id, $game->courtAt($event), true)) {
+            throw ValidationException::withMessages([
+                'editingPlayerId' => __('The player was not on the court at that moment.'),
+            ]);
+        }
 
         $event->update([
             'type' => $type,
@@ -136,7 +155,52 @@ class UpdateGameEventType
             'home_away' => $game->home_away,
             'foul_kind' => $foulKind,
             'clock' => $clock,
+            'court_x' => $nextCourtX,
+            'court_y' => $nextCourtY,
         ]);
+    }
+
+    /**
+     * @return array{0: int|null, 1: int|null}
+     */
+    private function courtForType(
+        Game $game,
+        GameEvent $event,
+        StatType $type,
+        ?int $courtX,
+        ?int $courtY,
+        bool $courtProvided,
+    ): array {
+        if (! $type->isFieldGoal()) {
+            return [null, null];
+        }
+
+        if ($courtProvided) {
+            if ($courtX === null || $courtY === null) {
+                return [null, null];
+            }
+
+            if ($game->mark_shot_location && ! ShotCourt::allows($type, $courtX, $courtY)) {
+                throw ValidationException::withMessages([
+                    'shotLocation' => __('Mark the shot inside the 2-point area for 2P, or outside for 3P.'),
+                ]);
+            }
+
+            return [$courtX, $courtY];
+        }
+
+        $existingX = $event->court_x;
+        $existingY = $event->court_y;
+
+        if ($existingX === null || $existingY === null) {
+            return [null, null];
+        }
+
+        if ($game->mark_shot_location && ! ShotCourt::allows($type, $existingX, $existingY)) {
+            return [null, null];
+        }
+
+        return [$existingX, $existingY];
     }
 
     private function squadPlayer(Game $game, int $playerId): Player

@@ -13,6 +13,7 @@
         'teamName' => $this->team->name,
         'opponentName' => __('Opponents'),
         'showGp' => true,
+        'showPlusMinus' => false,
         'wireKeyPrefix' => 'season-box',
     ])
 </div>
