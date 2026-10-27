@@ -14,6 +14,8 @@ use Livewire\Component;
 #[Layout('layouts.collect', ['titleAsGiven' => true])]
 class Show extends Component
 {
+    private const LINEUP_SORTS = ['seconds', 'points', 'opponentPoints'];
+
     #[Locked]
     public Game $game;
 
@@ -30,9 +32,7 @@ class Show extends Component
 
     public bool $sharing = false;
 
-    public string $lineupSort = 'seconds';
-
-    private const LINEUP_SORTS = ['seconds', 'points', 'opponentPoints', 'twoMade', 'threeMade', 'freeMade', 'plusMinus'];
+    public string $lineupSort = 'points';
 
     public function mount(Game $game): void
     {
@@ -193,7 +193,7 @@ class Show extends Component
      */
     private function sortLineupStats(array $rows): array
     {
-        $column = in_array($this->lineupSort, self::LINEUP_SORTS, true) ? $this->lineupSort : 'seconds';
+        $column = in_array($this->lineupSort, self::LINEUP_SORTS, true) ? $this->lineupSort : 'points';
 
         usort($rows, fn (array $left, array $right): int => [$right[$column], $right['seconds']] <=> [$left[$column], $left['seconds']]);
 

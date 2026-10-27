@@ -48,10 +48,10 @@ test('a public link shows the game statistics without signing in', function () {
         ->assertDontSee(__('Turn the screen sideways'))
         ->assertDontSee(__('Back'))
         ->assertDontSee(__('Bench'))
-        ->assertSee(__('Lineups'))
+        ->assertSee(__('Lineup stats'))
         ->assertSee(__('Court five'))
         ->assertDontSee(__('Stop sharing'))
-        ->assertSeeInOrder(['Box score', 'Matchup', 'Lineups']);
+        ->assertSeeInOrder(['Box score', 'Lineup stats', 'Matchup']);
 });
 
 test('the game uuid does not open the public statistics', function () {

@@ -15,6 +15,7 @@
                 @if ($showGp)
                     <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('GP') }}</th>
                 @endif
+                <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('Min') }}</th>
                 <th class="whitespace-nowrap px-2 py-2 text-right font-medium">{{ __('Pts') }}</th>
                 <th class="min-w-14 whitespace-nowrap px-2 py-2 text-right font-medium">{{ __('2P') }}</th>
                 <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('%') }}</th>
@@ -34,7 +35,6 @@
                 @endif
                 <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('PF') }}</th>
                 <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('TF') }}</th>
-                <th class="whitespace-nowrap px-2 py-2 text-center font-medium">{{ __('Min') }}</th>
             </tr>
         </thead>
         <tbody>
@@ -47,6 +47,7 @@
                     @if ($showGp)
                         <td class="px-2 py-2 text-center tabular-nums">{{ $player['gp'] ?? 0 }}</td>
                     @endif
+                    <td class="px-2 py-2 text-center tabular-nums">{{ $player['minutes'] }}</td>
                     <td class="px-2 py-2 text-right font-semibold tabular-nums">{{ $player['points'] }}</td>
                     <td class="min-w-14 whitespace-nowrap px-2 py-2 text-right tabular-nums">{{ $player['twoMade'] }}-{{ $player['twoAttempts'] }}</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['twoAttempts'] > 0 ? round(100 * $player['twoMade'] / $player['twoAttempts']).'%' : '—' }}</td>
@@ -66,7 +67,6 @@
                     @endif
                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['fouls'] }}</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $player['technicalFouls'] }}</td>
-                    <td class="px-2 py-2 text-center tabular-nums">{{ $player['minutes'] }}</td>
                 </tr>
             @endforeach
             <tr class="font-semibold">
@@ -74,6 +74,7 @@
                 @if ($showGp)
                     <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['team']['gp'] ?? '—' }}</td>
                 @endif
+                <td class="px-2 py-2 text-center text-zinc-400">—</td>
                 <td class="min-w-14 whitespace-nowrap px-2 py-2 text-right tabular-nums">{{ $boxScore['team']['points'] }}</td>
                 <td class="min-w-14 whitespace-nowrap px-2 py-2 text-right tabular-nums">{{ $boxScore['team']['twoMade'] }}-{{ $boxScore['team']['twoAttempts'] }}</td>
                 <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['team']['twoAttempts'] > 0 ? round(100 * $boxScore['team']['twoMade'] / $boxScore['team']['twoAttempts']).'%' : '—' }}</td>
@@ -93,7 +94,6 @@
                 @endif
                 <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['team']['fouls'] }}</td>
                 <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['team']['technicalFouls'] }}</td>
-                <td class="px-2 py-2 text-center text-zinc-400">—</td>
             </tr>
             @if ($opponentName !== null)
                 <tr class="font-semibold">
@@ -101,6 +101,7 @@
                     @if ($showGp)
                         <td class="px-2 py-2 text-center text-zinc-400">—</td>
                     @endif
+                    <td class="px-2 py-2 text-center text-zinc-400">—</td>
                     <td class="min-w-14 whitespace-nowrap px-2 py-2 text-right tabular-nums">{{ $boxScore['opponent']['points'] }}</td>
                     <td class="min-w-14 whitespace-nowrap px-2 py-2 text-right tabular-nums">{{ $boxScore['opponent']['twoMade'] }}-{{ $boxScore['opponent']['twoAttempts'] }}</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['opponent']['twoAttempts'] > 0 ? round(100 * $boxScore['opponent']['twoMade'] / $boxScore['opponent']['twoAttempts']).'%' : '—' }}</td>
@@ -120,7 +121,6 @@
                     @endif
                     <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['opponent']['fouls'] }}</td>
                     <td class="px-2 py-2 text-center tabular-nums">{{ $boxScore['opponent']['technicalFouls'] }}</td>
-                    <td class="px-2 py-2 text-center text-zinc-400">—</td>
                 </tr>
             @endif
         </tbody>

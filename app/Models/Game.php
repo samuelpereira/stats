@@ -727,7 +727,15 @@ class Game extends Model
      *     threeMade: int,
      *     threeAttempts: int,
      *     freeMade: int,
-     *     freeAttempts: int
+     *     freeAttempts: int,
+     *     offensiveRebounds: int,
+     *     defensiveRebounds: int,
+     *     assists: int,
+     *     blocks: int,
+     *     steals: int,
+     *     turnovers: int,
+     *     fouls: int,
+     *     technicalFouls: int
      * }>
      */
     public function lineupStats(): array
@@ -748,7 +756,7 @@ class Game extends Model
 
         $events = $this->events()
             ->chronological()
-            ->get(['id', 'type', 'quarter', 'clock', 'home_away', 'player_id', 'outgoing_player_id']);
+            ->get(['id', 'type', 'quarter', 'clock', 'home_away', 'player_id', 'outgoing_player_id', 'foul_kind']);
 
         $lineups = [];
         $running = false;
@@ -824,7 +832,7 @@ class Game extends Model
         $rows = [];
 
         foreach ($lineups as $key => $line) {
-            if ($key !== $currentKey && $line['seconds'] === 0 && $line['points'] === 0 && $line['opponentPoints'] === 0 && $line['twoAttempts'] + $line['threeAttempts'] + $line['freeAttempts'] === 0) {
+            if ($key !== $currentKey && ! $this->lineupHadAction($line)) {
                 continue;
             }
 
@@ -841,6 +849,14 @@ class Game extends Model
                 'threeAttempts' => $line['threeAttempts'],
                 'freeMade' => $line['freeMade'],
                 'freeAttempts' => $line['freeAttempts'],
+                'offensiveRebounds' => $line['offensiveRebounds'],
+                'defensiveRebounds' => $line['defensiveRebounds'],
+                'assists' => $line['assists'],
+                'blocks' => $line['blocks'],
+                'steals' => $line['steals'],
+                'turnovers' => $line['turnovers'],
+                'fouls' => $line['fouls'],
+                'technicalFouls' => $line['technicalFouls'],
             ];
         }
 
@@ -862,54 +878,65 @@ class Game extends Model
 
     /**
      * @param  list<int>  $onCourt
-     * @return array{ids: list<int>, seconds: int, points: int, opponentPoints: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int}
+     * @return array{ids: list<int>, seconds: int, opponentPoints: int, points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int, technicalFouls: int}
      */
     private function emptyLineupLine(array $onCourt): array
     {
         return [
             'ids' => $onCourt,
             'seconds' => 0,
-            'points' => 0,
             'opponentPoints' => 0,
-            'twoMade' => 0,
-            'twoAttempts' => 0,
-            'threeMade' => 0,
-            'threeAttempts' => 0,
-            'freeMade' => 0,
-            'freeAttempts' => 0,
+            ...$this->emptyBoxLine(),
         ];
     }
 
     /**
-     * @param  array{ids: list<int>, seconds: int, points: int, opponentPoints: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int}  $line
+     * @param  array{seconds: int, opponentPoints: int, points: int, twoAttempts: int, threeAttempts: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int, technicalFouls: int}  $line
+     */
+    private function lineupHadAction(array $line): bool
+    {
+        $actions = $line['points']
+            + $line['opponentPoints']
+            + $line['twoAttempts']
+            + $line['threeAttempts']
+            + $line['freeAttempts']
+            + $line['offensiveRebounds']
+            + $line['defensiveRebounds']
+            + $line['assists']
+            + $line['turnovers']
+            + $line['steals']
+            + $line['blocks']
+            + $line['fouls']
+            + $line['technicalFouls'];
+
+        return $line['seconds'] > 0 || $actions > 0;
+    }
+
+    /**
+     * @param  array{ids: list<int>, seconds: int, opponentPoints: int, points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int, technicalFouls: int}  $line
      */
     private function addLineupStat(array &$line, GameEvent $event): void
     {
-        $type = $event->type;
-
         if (! $this->isOurSide($event->home_away)) {
-            $line['opponentPoints'] += $type->points();
+            $line['opponentPoints'] += $event->type->points();
 
             return;
         }
 
-        $line['points'] += $type->points();
-
-        $made = $type->points() > 0 ? 1 : 0;
-
-        if ($type === StatType::TwoPointMade || $type === StatType::TwoPointMissed) {
-            $line['twoAttempts']++;
-            $line['twoMade'] += $made;
+        if ($event->type === StatType::Foul && $event->player_id === null) {
+            return;
         }
 
-        if ($type === StatType::ThreePointMade || $type === StatType::ThreePointMissed) {
-            $line['threeAttempts']++;
-            $line['threeMade'] += $made;
+        $stats = $this->emptyBoxLine();
+
+        foreach ($stats as $key => $value) {
+            $stats[$key] = $line[$key];
         }
 
-        if ($type === StatType::FreeThrowMade || $type === StatType::FreeThrowMissed) {
-            $line['freeAttempts']++;
-            $line['freeMade'] += $made;
+        $this->addBoxStat($stats, $event);
+
+        foreach ($stats as $key => $value) {
+            $line[$key] = $value;
         }
     }
 

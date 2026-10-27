@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\FoulKind;
 use App\Enums\GameStatus;
 use App\Enums\HomeAway;
 use App\Enums\StatType;
@@ -253,7 +254,7 @@ test('plus minus counts the margin only while that player is on the court', func
     $this->actingAs($member)
         ->get(route('statistics.show', $game))
         ->assertOk()
-        ->assertSeeInOrder(['+/-', 'PF', 'Min'])
+        ->assertSeeInOrder(['Player', 'Min', 'Pts'])
         ->assertSee('+1')
         ->assertSee('-2')
         ->assertSee('-3');
@@ -298,7 +299,17 @@ test('lineup stats total time, points and shooting for each court five', functio
     $event(['type' => StatType::TwoPointMade, 'player_id' => $starters[0]->id, 'home_away' => HomeAway::Home, 'clock' => '09:30']);
     $event(['type' => StatType::ThreePointMissed, 'player_id' => $starters[1]->id, 'home_away' => HomeAway::Home, 'clock' => '09:00']);
     $event(['type' => StatType::ThreePointMade, 'home_away' => HomeAway::Away, 'clock' => '08:30']);
+    $event(['type' => StatType::DefensiveRebound, 'player_id' => $starters[0]->id, 'home_away' => HomeAway::Home, 'clock' => '08:25']);
+    $event(['type' => StatType::OffensiveRebound, 'player_id' => $starters[1]->id, 'home_away' => HomeAway::Home, 'clock' => '08:20']);
+    $event(['type' => StatType::Assist, 'player_id' => $starters[2]->id, 'home_away' => HomeAway::Home, 'clock' => '08:18']);
+    $event(['type' => StatType::Steal, 'player_id' => $starters[3]->id, 'home_away' => HomeAway::Home, 'clock' => '08:16']);
+    $event(['type' => StatType::Block, 'player_id' => $starters[4]->id, 'home_away' => HomeAway::Home, 'clock' => '08:14']);
+    $event(['type' => StatType::Turnover, 'player_id' => $starters[0]->id, 'home_away' => HomeAway::Home, 'clock' => '08:12']);
+    $event(['type' => StatType::Foul, 'player_id' => $starters[1]->id, 'home_away' => HomeAway::Home, 'clock' => '08:10']);
     $event(['type' => StatType::Substitution, 'player_id' => $bench->id, 'outgoing_player_id' => $starters[0]->id, 'home_away' => HomeAway::Home, 'clock' => '08:00']);
+    $event(['type' => StatType::Foul, 'player_id' => $bench->id, 'home_away' => HomeAway::Home, 'foul_kind' => FoulKind::Technical, 'clock' => '06:30']);
+    $event(['type' => StatType::ThreePointMade, 'home_away' => HomeAway::Away, 'clock' => '06:00']);
+    $event(['type' => StatType::ThreePointMade, 'home_away' => HomeAway::Away, 'clock' => '05:30']);
     $event(['type' => StatType::FreeThrowMade, 'player_id' => $bench->id, 'home_away' => HomeAway::Home, 'clock' => '07:00']);
     $event(['type' => StatType::FreeThrowMissed, 'player_id' => $bench->id, 'home_away' => HomeAway::Home, 'clock' => '07:00']);
     $event(['type' => StatType::Substitution, 'player_id' => $starters[0]->id, 'outgoing_player_id' => $bench->id, 'home_away' => HomeAway::Home, 'clock' => '05:00']);
@@ -315,21 +326,33 @@ test('lineup stats total time, points and shooting for each court five', functio
         ->and($lineups[0]['plusMinus'])->toBe(2)
         ->and([$lineups[0]['twoMade'], $lineups[0]['twoAttempts']])->toBe([1, 1])
         ->and([$lineups[0]['threeMade'], $lineups[0]['threeAttempts']])->toBe([1, 2])
+        ->and($lineups[0]['defensiveRebounds'])->toBe(1)
+        ->and($lineups[0]['offensiveRebounds'])->toBe(1)
+        ->and($lineups[0]['assists'])->toBe(1)
+        ->and($lineups[0]['steals'])->toBe(1)
+        ->and($lineups[0]['blocks'])->toBe(1)
+        ->and($lineups[0]['turnovers'])->toBe(1)
+        ->and($lineups[0]['fouls'])->toBe(1)
+        ->and($lineups[0]['technicalFouls'])->toBe(0)
         ->and(collect($lineups[1]['players'])->pluck('number')->all())->toBe([2, 3, 4, 5, 12])
         ->and($lineups[1]['minutes'])->toBe('3:00')
         ->and($lineups[1]['points'])->toBe(1)
-        ->and($lineups[1]['opponentPoints'])->toBe(0)
+        ->and($lineups[1]['opponentPoints'])->toBe(6)
+        ->and($lineups[1]['technicalFouls'])->toBe(1)
         ->and([$lineups[1]['freeMade'], $lineups[1]['freeAttempts']])->toBe([1, 2]);
 
     Livewire::actingAs($member)
         ->test(StatisticsShow::class, ['game' => $game])
-        ->assertSee('Lineups')
+        ->assertSee('Lineup stats')
         ->assertSee('Court five')
+        ->assertSet('lineupSort', 'points')
         ->assertViewHas('lineupStats', fn (array $rows): bool => $rows[0]['minutes'] === '7:00')
         ->call('sortLineupsBy', 'freeMade')
+        ->assertSet('lineupSort', 'points')
+        ->call('sortLineupsBy', 'opponentPoints')
         ->assertViewHas('lineupStats', fn (array $rows): bool => $rows[0]['minutes'] === '3:00')
         ->call('sortLineupsBy', 'unknown')
-        ->assertSet('lineupSort', 'freeMade');
+        ->assertSet('lineupSort', 'opponentPoints');
 });
 
 test('lineup chips use our home or away colour', function () {

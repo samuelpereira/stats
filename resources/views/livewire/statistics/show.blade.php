@@ -197,6 +197,114 @@
             ])
         </div>
 
+        @if (count($lineupStats) > 0)
+            @php
+                $lineupColumns = [
+                    ['key' => 'seconds', 'label' => __('Min'), 'sortable' => true],
+                    ['key' => 'points', 'label' => __('Pts'), 'sortable' => true],
+                    ['key' => 'opponentPoints', 'label' => __('Opp Pts'), 'sortable' => true],
+                    ['key' => 'plusMinus', 'label' => __('+/-'), 'sortable' => false],
+                    ['key' => 'two', 'label' => __('2P'), 'sortable' => false],
+                    ['key' => 'three', 'label' => __('3P'), 'sortable' => false],
+                    ['key' => 'free', 'label' => __('FT'), 'sortable' => false],
+                    ['key' => 'defensiveRebounds', 'label' => __('DR'), 'sortable' => false],
+                    ['key' => 'offensiveRebounds', 'label' => __('OR'), 'sortable' => false],
+                    ['key' => 'rebounds', 'label' => __('TR'), 'sortable' => false],
+                    ['key' => 'assists', 'label' => __('AST'), 'sortable' => false],
+                    ['key' => 'blocks', 'label' => __('BLK'), 'sortable' => false],
+                    ['key' => 'steals', 'label' => __('STL'), 'sortable' => false],
+                    ['key' => 'turnovers', 'label' => __('TO'), 'sortable' => false],
+                    ['key' => 'fouls', 'label' => __('PF'), 'sortable' => false],
+                    ['key' => 'technicalFouls', 'label' => __('TF'), 'sortable' => false],
+                ];
+            @endphp
+            <div class="mt-4 rounded-lg border border-zinc-200 bg-white shadow-sm">
+                <div class="border-b border-zinc-200 px-4 py-3 sm:px-6">
+                    <h2 class="text-base font-semibold">{{ __('Lineup stats') }}</h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-max min-w-full text-xs">
+                        <thead>
+                            <tr class="border-b border-zinc-200 text-xs font-medium tracking-wide text-zinc-500 uppercase">
+                                <th class="sticky left-0 z-10 bg-white px-3 py-2 text-left font-medium sm:px-6">{{ __('Court five') }}</th>
+                                @foreach ($lineupColumns as $column)
+                                    <th @class([
+                                        'whitespace-nowrap px-2 py-2 text-center font-medium',
+                                        'min-w-14' => in_array($column['key'], ['two', 'three', 'free'], true),
+                                    ])>
+                                        @if ($column['sortable'])
+                                            <button
+                                                type="button"
+                                                wire:click="sortLineupsBy('{{ $column['key'] }}')"
+                                                @class([
+                                                    'whitespace-nowrap rounded-md px-1 uppercase',
+                                                    'bg-zinc-900 text-white' => $lineupSort === $column['key'],
+                                                    'hover:bg-zinc-100' => $lineupSort !== $column['key'],
+                                                ])
+                                            >{{ $column['label'] }}</button>
+                                        @else
+                                            {{ $column['label'] }}
+                                        @endif
+                                    </th>
+                                @endforeach
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($lineupStats as $line)
+                                <tr wire:key="lineup-{{ collect($line['players'])->pluck('id')->implode('-') }}" class="border-b border-zinc-100 last:border-0">
+                                    <td class="sticky left-0 z-10 bg-white px-3 py-2 sm:px-6">
+                                        <div class="grid grid-cols-5 gap-1">
+                                            @foreach ($line['players'] as $player)
+                                                <span
+                                                    class="flex h-7 w-8 items-center justify-center rounded-md text-xs font-bold tabular-nums ring-1 ring-black/10 ring-inset"
+                                                    style="background-color: {{ $teamColor }}; color: {{ $teamTextColor }}"
+                                                    title="{{ $player['label'] }}"
+                                                >{{ $player['number'] ?? mb_substr($player['name'], 0, 2) }}</span>
+                                            @endforeach
+                                        </div>
+                                    </td>
+                                    @foreach ($lineupColumns as $column)
+                                        @php
+                                            $made = match ($column['key']) {
+                                                'two' => $line['twoMade'],
+                                                'three' => $line['threeMade'],
+                                                'free' => $line['freeMade'],
+                                                default => 0,
+                                            };
+                                            $attempts = match ($column['key']) {
+                                                'two' => $line['twoAttempts'],
+                                                'three' => $line['threeAttempts'],
+                                                'free' => $line['freeAttempts'],
+                                                default => 0,
+                                            };
+                                        @endphp
+                                        <td @class([
+                                            'whitespace-nowrap px-2 py-2 text-center tabular-nums',
+                                            'min-w-14' => in_array($column['key'], ['two', 'three', 'free'], true),
+                                            'font-semibold' => in_array($column['key'], ['points', 'plusMinus'], true),
+                                            'text-green-700' => $column['key'] === 'plusMinus' && $line['plusMinus'] > 0,
+                                            'text-red-700' => $column['key'] === 'plusMinus' && $line['plusMinus'] < 0,
+                                            'bg-zinc-100' => $lineupSort === $column['key'],
+                                        ])>
+                                            @switch($column['key'])
+                                                @case('seconds'){{ $line['minutes'] }}@break
+                                                @case('plusMinus'){{ $line['plusMinus'] > 0 ? '+'.$line['plusMinus'] : $line['plusMinus'] }}@break
+                                                @case('two')
+                                                @case('three')
+                                                @case('free'){{ $made }}-{{ $attempts }}@break
+                                                @case('rebounds'){{ $line['offensiveRebounds'] + $line['defensiveRebounds'] }}@break
+                                                @default{{ $line[$column['key']] }}
+                                            @endswitch
+                                        </td>
+                                    @endforeach
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        @endif
+
         @include('livewire.statistics.partials.matchup')
 
         @if ($gameFlow !== null)
@@ -214,76 +322,6 @@
             </div>
         @endif
 
-        @if (count($lineupStats) > 0)
-            @php
-                $lineupColumns = [
-                    'seconds' => __('Min'),
-                    'points' => __('Pts'),
-                    'opponentPoints' => __('Opp Pts'),
-                    'twoMade' => __('2P'),
-                    'threeMade' => __('3P'),
-                    'freeMade' => __('FT'),
-                    'plusMinus' => __('+/-'),
-                ];
-            @endphp
-            <div class="mt-4 rounded-lg border border-zinc-200 bg-white shadow-sm">
-                <div class="border-b border-zinc-200 px-4 py-3 sm:px-6">
-                    <h2 class="text-base font-semibold">{{ __('Lineups') }}</h2>
-                    <p class="text-sm text-zinc-500">{{ __('Time and production of each five on court') }}</p>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-max min-w-full text-xs">
-                        <thead>
-                            <tr class="border-b border-zinc-200 text-xs font-medium tracking-wide text-zinc-500 uppercase">
-                                <th class="sticky left-0 z-10 bg-white px-3 py-2 text-left font-medium sm:px-6">{{ __('Court five') }}</th>
-                                @foreach ($lineupColumns as $column => $label)
-                                    <th class="px-1 py-2 text-center font-medium">
-                                        <button
-                                            type="button"
-                                            wire:click="sortLineupsBy('{{ $column }}')"
-                                            @class([
-                                                'min-w-11 whitespace-nowrap rounded-md px-2 py-1 uppercase',
-                                                'bg-zinc-900 text-white' => $lineupSort === $column,
-                                                'hover:bg-zinc-100' => $lineupSort !== $column,
-                                            ])
-                                        >{{ $label }}</button>
-                                    </th>
-                                @endforeach
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($lineupStats as $line)
-                                <tr wire:key="lineup-{{ collect($line['players'])->pluck('id')->implode('-') }}" class="border-b border-zinc-100 last:border-0">
-                                    <td class="sticky left-0 z-10 bg-white px-3 py-2 sm:px-6">
-                                        <div class="flex gap-1">
-                                            @foreach ($line['players'] as $player)
-                                                <span
-                                                    class="flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-xs font-bold tabular-nums ring-1 ring-black/10 ring-inset"
-                                                    style="background-color: {{ $teamColor }}; color: {{ $teamTextColor }}"
-                                                    title="{{ $player['label'] }}"
-                                                >{{ $player['number'] ?? mb_substr($player['name'], 0, 2) }}</span>
-                                            @endforeach
-                                        </div>
-                                    </td>
-                                    <td @class(['px-2 py-2 text-center tabular-nums', 'bg-zinc-100' => $lineupSort === 'seconds'])>{{ $line['minutes'] }}</td>
-                                    <td @class(['px-2 py-2 text-center font-semibold tabular-nums', 'bg-zinc-100' => $lineupSort === 'points'])>{{ $line['points'] }}</td>
-                                    <td @class(['px-2 py-2 text-center tabular-nums', 'bg-zinc-100' => $lineupSort === 'opponentPoints'])>{{ $line['opponentPoints'] }}</td>
-                                    <td @class(['whitespace-nowrap px-2 py-2 text-center tabular-nums', 'bg-zinc-100' => $lineupSort === 'twoMade'])>{{ $line['twoMade'] }}/{{ $line['twoAttempts'] }}</td>
-                                    <td @class(['whitespace-nowrap px-2 py-2 text-center tabular-nums', 'bg-zinc-100' => $lineupSort === 'threeMade'])>{{ $line['threeMade'] }}/{{ $line['threeAttempts'] }}</td>
-                                    <td @class(['whitespace-nowrap px-2 py-2 text-center tabular-nums', 'bg-zinc-100' => $lineupSort === 'freeMade'])>{{ $line['freeMade'] }}/{{ $line['freeAttempts'] }}</td>
-                                    <td @class([
-                                        'px-2 py-2 text-center font-semibold tabular-nums',
-                                        'text-green-700' => $line['plusMinus'] > 0,
-                                        'text-red-700' => $line['plusMinus'] < 0,
-                                        'bg-zinc-100' => $lineupSort === 'plusMinus',
-                                    ])>{{ $line['plusMinus'] > 0 ? '+'.$line['plusMinus'] : $line['plusMinus'] }}</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        @endif
 
         @if (count($shotChartsByPeriod) > 0)
             <div class="mt-4 rounded-lg border border-zinc-200 bg-white px-4 py-4 shadow-sm sm:px-6">
