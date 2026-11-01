@@ -4,6 +4,7 @@
     'opponentName' => null,
     'showGp' => false,
     'showPlusMinus' => true,
+    'markColor' => null,
     'wireKeyPrefix' => 'box',
 ])
 
@@ -43,6 +44,9 @@
                     <td class="sticky left-0 z-10 bg-white w-44 whitespace-nowrap py-2 pr-3 pl-4 sm:pl-6">
                         <span class="font-medium tabular-nums">{{ $player['number'] ?? '—' }}</span>
                         <span class="ml-2">{{ $player['name'] }}</span>
+                        @if ($player['starter'] ?? false)
+                            <span class="text-zinc-500" title="{{ __('Starting five') }}" @style(['color: '.$markColor => filled($markColor)])>*</span>
+                        @endif
                     </td>
                     @if ($showGp)
                         <td class="px-2 py-2 text-center tabular-nums">{{ $player['gp'] ?? 0 }}</td>
@@ -126,3 +130,6 @@
         </tbody>
     </table>
 </div>
+@if (collect($boxScore['players'])->contains(fn (array $player): bool => (bool) ($player['starter'] ?? false)))
+    <p class="px-4 pt-2 pb-3 text-xs text-zinc-500 sm:px-6"><span @style(['color: '.$markColor => filled($markColor)])>*</span> {{ __('Starting five') }}</p>
+@endif

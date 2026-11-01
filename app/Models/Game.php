@@ -382,7 +382,7 @@ class Game extends Model
 
     /**
      * @return array{
-     *     players: list<array{id: int, number: int|null, name: string, seconds: int, minutes: string, plusMinus: int, points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int, technicalFouls: int}>,
+     *     players: list<array{id: int, number: int|null, name: string, starter: bool, seconds: int, minutes: string, plusMinus: int, points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int, technicalFouls: int}>,
      *     court: list<int>,
      *     team: array{seconds: int, minutes: string, points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int, technicalFouls: int},
      *     opponent: array{points: int, twoMade: int, twoAttempts: int, threeMade: int, threeAttempts: int, freeMade: int, freeAttempts: int, offensiveRebounds: int, defensiveRebounds: int, assists: int, turnovers: int, steals: int, blocks: int, fouls: int, technicalFouls: int}
@@ -402,8 +402,10 @@ class Game extends Model
         $lines = [];
         $plusMinus = [];
         $onCourt = [];
+        $starters = [];
 
         foreach ($this->players()->wherePivot('starter', true)->pluck('players.id') as $playerId) {
+            $starters[] = (int) $playerId;
             $onCourt[] = (int) $playerId;
         }
 
@@ -472,6 +474,7 @@ class Game extends Model
                 'id' => $player->id,
                 'number' => $player->number,
                 'name' => $player->name,
+                'starter' => in_array($player->id, $starters, true),
                 'seconds' => $playerSeconds,
                 'minutes' => self::formatPlayed($playerSeconds),
                 'plusMinus' => $plusMinus[$player->id] ?? 0,

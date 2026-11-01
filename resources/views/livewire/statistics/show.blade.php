@@ -194,6 +194,7 @@
                 'boxScore' => $boxScore,
                 'teamName' => $teamName,
                 'opponentName' => $opponentName,
+                'markColor' => $teamColor,
             ])
         </div>
 
