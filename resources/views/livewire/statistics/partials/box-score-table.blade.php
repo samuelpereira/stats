@@ -45,7 +45,7 @@
                         <span class="font-medium tabular-nums">{{ $player['number'] ?? '—' }}</span>
                         <span class="ml-2">{{ $player['name'] }}</span>
                         @if ($player['starter'] ?? false)
-                            <span class="text-zinc-500" title="{{ __('Starting five') }}" @style(['color: '.$markColor => filled($markColor)])>*</span>
+                            <span class="font-bold text-zinc-500" title="{{ __('Starting five') }}" @style(['color: '.$markColor => filled($markColor)])>*</span>
                         @endif
                     </td>
                     @if ($showGp)
@@ -131,5 +131,5 @@
     </table>
 </div>
 @if (collect($boxScore['players'])->contains(fn (array $player): bool => (bool) ($player['starter'] ?? false)))
-    <p class="px-4 pt-2 pb-3 text-xs text-zinc-500 sm:px-6"><span @style(['color: '.$markColor => filled($markColor)])>*</span> {{ __('Starting five') }}</p>
+    <p class="px-4 pt-2 pb-3 text-xs text-zinc-500 sm:px-6"><span class="font-bold" @style(['color: '.$markColor => filled($markColor)])>*</span> {{ __('Starting five') }}</p>
 @endif
