@@ -892,7 +892,7 @@ class Record extends Component
     {
         $this->authorize('collect', $this->game);
 
-        if ($this->editingType === StatType::Timeout->value || $this->editingType === StatType::Substitution->value) {
+        if ($this->editingType === StatType::Timeout->value) {
             return;
         }
 
@@ -909,6 +909,18 @@ class Record extends Component
     public function selectEditingOutgoingPlayer(int $playerId): void
     {
         $this->authorize('collect', $this->game);
+
+        if ($this->editingType !== StatType::Substitution->value) {
+            return;
+        }
+
+        $player = $this->game->players()->whereKey($playerId)->first();
+
+        if (! $player instanceof Player) {
+            throw (new ModelNotFoundException)->setModel(Player::class, [$playerId]);
+        }
+
+        $this->editingOutgoingPlayerId = $player->id;
     }
 
     public function selectEditingOpponent(): void

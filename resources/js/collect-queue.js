@@ -225,6 +225,7 @@ function createCollectQueue() {
         editingFoulKind: null,
         editingEventClock: null,
         editingPlayerLines: [],
+        editingCourtBefore: [],
         editingCourtX: null,
         editingCourtY: null,
         seconds: {},
@@ -1133,6 +1134,119 @@ function createCollectQueue() {
             return (this.baseline?.roster ?? []).filter((player) => ! court.has(player.id));
         },
 
+        editCourtPlayers() {
+            const court = new Set((this.editingCourtBefore ?? []).map((id) => Number(id)));
+
+            return (this.baseline?.roster ?? []).filter((player) => court.has(Number(player.id)));
+        },
+
+        editBenchPlayers() {
+            const court = new Set((this.editingCourtBefore ?? []).map((id) => Number(id)));
+
+            return (this.baseline?.roster ?? []).filter((player) => ! court.has(Number(player.id)));
+        },
+
+        substitutionRole(playerId) {
+            const id = Number(playerId);
+            const onCourt = (this.editingCourtBefore ?? []).map((courtId) => Number(courtId)).includes(id);
+            const selected = this.courtSelection.map((selectedId) => Number(selectedId)).includes(id);
+
+            if (onCourt && selected) {
+                return 'stays';
+            }
+
+            if (onCourt) {
+                return 'leaves';
+            }
+
+            if (selected) {
+                return 'enters';
+            }
+
+            return '';
+        },
+
+        chooseSubstitutionPlayer(playerId) {
+            const id = Number(playerId);
+            const before = (this.editingCourtBefore ?? []).map((courtId) => Number(courtId));
+            const onCourt = before.includes(id);
+
+            if (onCourt) {
+                this.editingOutgoingPlayerId = id;
+            } else {
+                this.editingPlayerId = id;
+            }
+
+            const outgoing = Number(this.editingOutgoingPlayerId);
+            const incoming = Number(this.editingPlayerId);
+            const selected = before.filter((courtId) => courtId !== outgoing);
+
+            if (incoming && ! selected.includes(incoming)) {
+                selected.push(incoming);
+            }
+
+            this.courtSelection = selected;
+            this.courtError = false;
+        },
+
+        courtBeforeCommittedLine(eventId) {
+            let court = (this.baseline?.court ?? []).map((id) => Number(id));
+            const lines = this.serverLines ?? [];
+            const index = lines.findIndex((line) => Number(line.id) === Number(eventId));
+
+            if (index < 0) {
+                return court;
+            }
+
+            lines.slice(0, index + 1).forEach((line) => {
+                court = this.undoSubstitutionOnCourt(court, line);
+            });
+
+            return court;
+        },
+
+        courtBeforeQueuedItem(id) {
+            let court = (this.baseline?.court ?? []).map((playerId) => Number(playerId));
+
+            for (const item of this.items) {
+                if (item.id === id) {
+                    break;
+                }
+
+                if (item.operation !== 'substitution') {
+                    continue;
+                }
+
+                const marked = (item.payload.playerIds ?? []).map((playerId) => Number(playerId));
+
+                if (marked.length === 5) {
+                    court = marked;
+                }
+            }
+
+            return court;
+        },
+
+        undoSubstitutionOnCourt(court, line) {
+            if (line.type !== 'substitution' || ! line.playerId || ! line.outgoingPlayerId) {
+                return court;
+            }
+
+            const next = court.filter((id) => id !== Number(line.playerId));
+
+            if (! next.includes(Number(line.outgoingPlayerId))) {
+                next.push(Number(line.outgoingPlayerId));
+            }
+
+            return next;
+        },
+
+        openSubstitutionEdit(before, selected) {
+            this.editingCourtBefore = before.map((id) => Number(id));
+            this.courtSelection = selected.map((id) => Number(id));
+            this.courtError = false;
+        },
+
         foulCount(playerId) {
             const player = (this.baseline?.roster ?? []).find((rosterPlayer) => rosterPlayer.id === Number(playerId));
             const recorded = Number(player?.fouls ?? 0);
@@ -1547,6 +1661,9 @@ function createCollectQueue() {
             this.editingFoulKind = null;
             this.editingEventClock = null;
             this.editingPlayerLines = [];
+            this.editingCourtBefore = [];
+            this.courtSelection = [];
+            this.courtError = false;
             this.editingCourtX = null;
             this.editingCourtY = null;
             this.choosingShot = false;
@@ -1677,9 +1794,24 @@ function createCollectQueue() {
             let player = this.baseline?.opponentName ?? '';
             let playerKeys = ['opponent'];
 
+            let playerLines = [];
+
             if (payload.type === 'substitution') {
+                const roster = this.baseline?.roster ?? [];
+                const incoming = roster.find((entry) => entry.id === Number(payload.playerId));
+                const outgoing = roster.find((entry) => entry.id === Number(payload.outgoingPlayerId));
                 player = '';
-                playerKeys = current.playerKeys ?? [];
+                playerKeys = [];
+
+                if (incoming) {
+                    playerLines.push({ enters: true, name: incoming.label ?? incoming.name });
+                    playerKeys.push(`player:${incoming.id}`);
+                }
+
+                if (outgoing) {
+                    playerLines.push({ enters: false, name: outgoing.label ?? outgoing.name });
+                    playerKeys.push(`player:${outgoing.id}`);
+                }
             } else if (payload.type === 'timeout') {
                 player = forOpponent ? (this.baseline?.opponentName ?? '') : (this.baseline?.teamName ?? '');
                 playerKeys = forOpponent ? ['opponent'] : ['team'];
@@ -1719,7 +1851,7 @@ function createCollectQueue() {
                 side: payload.type === 'substitution'
                     ? current.side
                     : (forOpponent ? oppositeSide(homeAway) : homeAway),
-                playerLines: payload.type === 'substitution' ? (current.playerLines ?? []) : [],
+                playerLines,
             };
         },
 
@@ -1784,7 +1916,31 @@ function createCollectQueue() {
         editPending(id) {
             const item = this.items.find((queued) => queued.id === id);
 
-            if (! item || item.id === this.sendingId || item.operation !== 'record') {
+            if (! item || item.id === this.sendingId) {
+                return;
+            }
+
+            if (item.operation === 'substitution') {
+                this.editingEventId = null;
+                this.editingPendingId = id;
+                this.editingOriginalType = 'substitution';
+                this.editingType = 'substitution';
+                this.editingPlayerId = null;
+                this.editingOutgoingPlayerId = null;
+                this.editingForOpponent = false;
+                this.editingFoulKind = null;
+                this.editingEventClock = item.payload.clock;
+                this.editingPlayerLines = [];
+                this.editingCourtX = null;
+                this.editingCourtY = null;
+                this.choosingShot = false;
+                this.shotError = false;
+                this.openSubstitutionEdit(this.courtBeforeQueuedItem(id), item.payload.playerIds ?? []);
+
+                return;
+            }
+
+            if (item.operation !== 'record') {
                 return;
             }
 
@@ -1823,6 +1979,21 @@ function createCollectQueue() {
             this.editingCourtY = line.courtY ?? null;
             this.choosingShot = false;
             this.shotError = false;
+
+            if ((line.type ?? line.actionKey) === 'substitution') {
+                const before = this.courtBeforeCommittedLine(line.id);
+                const outgoing = Number(line.outgoingPlayerId);
+                const incoming = Number(line.playerId);
+                const selected = before.filter((id) => id !== outgoing);
+
+                if (incoming && ! selected.includes(incoming)) {
+                    selected.push(incoming);
+                }
+
+                this.editingPlayerId = incoming || null;
+                this.editingOutgoingPlayerId = outgoing || null;
+                this.openSubstitutionEdit(before, selected);
+            }
         },
 
         setEditingFoulKind(kind) {
@@ -1845,6 +2016,12 @@ function createCollectQueue() {
             const item = this.items.find((queued) => queued.id === this.editingPendingId);
 
             if (! item || item.id === this.sendingId) {
+                return;
+            }
+
+            if (item.operation === 'substitution') {
+                await this.savePendingSubstitution(item);
+
                 return;
             }
 
@@ -1929,6 +2106,56 @@ function createCollectQueue() {
             this.drain();
         },
 
+        async savePendingSubstitution(item) {
+            const clock = this.normalizeEditClock(this.editingEventClock ?? item.payload.clock);
+            const selected = [...new Set(this.courtSelection.map((id) => Number(id)))];
+
+            if (! clock) {
+                this.lastSyncError = 'invalid clock';
+
+                return;
+            }
+
+            if (selected.length !== 5) {
+                this.courtError = true;
+
+                return;
+            }
+
+            const payload = toPlain({
+                ...item.payload,
+                playerIds: selected,
+                clock,
+            }) ?? {};
+
+            if (item.attempted) {
+                const index = this.items.findIndex((queued) => queued.id === item.id);
+                const nextSeq = this.items[index + 1]?.seq ?? item.seq + 1;
+                const cancel = this.cancelFor(item);
+                const replacement = {
+                    id: crypto.randomUUID(),
+                    gameId: item.gameId,
+                    seq: (item.seq + nextSeq) / 2,
+                    operation: 'substitution',
+                    payload,
+                };
+                this.items = [...this.items.slice(0, index), cancel, replacement, ...this.items.slice(index + 1)];
+                await putItem(this.database, durableQueueItem(cancel));
+                await putItem(this.database, durableQueueItem(replacement));
+                await deleteItem(this.database, item.id);
+            } else {
+                const updated = { ...durableQueueItem(item), payload };
+                this.items = this.items.map((queued) => (queued.id === updated.id ? updated : queued));
+                await putItem(this.database, durableQueueItem(updated));
+            }
+
+            this.replay();
+            this.closeEdit();
+            this.clearSyncFailure();
+            this.releaseStuckDrainFlag();
+            this.drain();
+        },
+
         finishGame() {
             if (this.items.length > 0) {
                 this.finishWhenEmpty = true;
@@ -1999,7 +2226,7 @@ function createCollectQueue() {
                 ],
                 label: this.baseline.labels.substitution ?? 'sub',
                 side: this.baseline.homeAway,
-                editable: false,
+                editable: true,
                 missed: false,
                 actionKey: 'substitution',
                 playerKeys: [...entering, ...leaving].map((player) => `player:${player.id}`),

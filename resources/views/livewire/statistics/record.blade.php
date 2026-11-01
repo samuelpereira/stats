@@ -643,7 +643,10 @@
                 <flux:icon name="arrow-left" class="size-4" />
                 {{ __('Back') }}
             </button>
-            <h1 class="truncate text-center text-sm font-medium sm:text-base">{{ __('Edit') }}</h1>
+            <h1 class="truncate text-center text-sm font-medium sm:text-base">
+                <span x-show="$store.collectQueue.editingType !== 'substitution'">{{ __('Edit') }}</span>
+                <span x-cloak x-show="$store.collectQueue.editingType === 'substitution'">{{ __('Substitution') }}</span>
+            </h1>
             <span></span>
         </div>
     </header>
@@ -664,15 +667,58 @@
                 <span class="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{{ $opponentName }}</span>
             </button>
         </div>
-        <div x-cloak x-show="$store.collectQueue.editingType === 'substitution'" class="mt-6 space-y-4 sm:mx-auto sm:max-w-md">
-            <template x-for="playerLine in $store.collectQueue.editingPlayerLines" :key="playerLine.name + '-' + playerLine.enters">
-                <div class="flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 sm:rounded-xl sm:py-4">
-                    <span class="min-w-0 flex-1">
-                        <span class="block text-xs font-medium" :class="playerLine.enters ? 'text-green-700' : 'text-red-700'" x-text="playerLine.enters ? @js(__('Comes in')) : @js(__('Goes out'))"></span>
-                        <span class="block truncate text-sm font-semibold sm:text-base" x-text="playerLine.name"></span>
-                    </span>
+        <div x-cloak x-show="$store.collectQueue.editingType === 'substitution'" class="mt-6">
+            <p class="text-center text-sm text-zinc-500">{{ __('Mark 5 players.') }}</p>
+            <p x-cloak x-show="$store.collectQueue.courtError" class="pt-1 text-center text-xs text-red-700">{{ __('Mark 5 players.') }}</p>
+            <div class="mt-4 flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3">
+                <template x-for="player in $store.collectQueue.editCourtPlayers()" :key="'edit-sub-court-' + player.id">
+                    <button type="button" x-on:click="$store.collectQueue.editingPendingId ? $store.collectQueue.toggleCourt(player.id) : $store.collectQueue.chooseSubstitutionPlayer(player.id)" class="flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4" :class="$store.collectQueue.courtSelection.includes(player.id) ? 'border-zinc-900 bg-amber-100' : 'border-zinc-300 bg-white'">
+                        <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 bg-zinc-900 text-base font-bold tabular-nums text-white sm:size-14 sm:text-lg" x-text="player.number ?? '—'"></span>
+                        <span class="min-w-0 flex-1">
+                            <span class="block truncate text-sm font-semibold sm:text-base" x-text="player.name"></span>
+                            <span x-show="$store.collectQueue.substitutionRole(player.id) === 'stays'" class="block text-xs font-medium text-zinc-500">{{ __('On court') }}</span>
+                            <span x-show="$store.collectQueue.substitutionRole(player.id) === 'leaves'" class="block text-xs font-medium text-red-700">{{ __('Goes out') }}</span>
+                        </span>
+                        <span x-cloak x-show="$store.collectQueue.foulCount(player.id) > 0" class="flex shrink-0 items-center gap-1">
+                            <template x-for="mark in $store.collectQueue.foulMarks(player.id)" :key="'edit-court-foul-' + player.id + '-' + mark">
+                                <span
+                                    class="size-2.5 rounded-sm"
+                                    :class="{
+                                        'bg-green-700': $store.collectQueue.foulCount(player.id) <= 3,
+                                        'bg-orange-600': $store.collectQueue.foulCount(player.id) === 4,
+                                        'bg-red-700': $store.collectQueue.foulCount(player.id) >= 5,
+                                    }"
+                                ></span>
+                            </template>
+                        </span>
+                    </button>
+                </template>
+            </div>
+            <div x-cloak x-show="$store.collectQueue.editBenchPlayers().length > 0" class="mt-4 border-t border-zinc-200 pt-3">
+                <div class="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:content-start sm:gap-3 lg:grid-cols-3">
+                    <template x-for="player in $store.collectQueue.editBenchPlayers()" :key="'edit-sub-bench-' + player.id">
+                        <button type="button" x-on:click="$store.collectQueue.editingPendingId ? $store.collectQueue.toggleCourt(player.id) : $store.collectQueue.chooseSubstitutionPlayer(player.id)" class="flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left sm:rounded-xl sm:py-4" :class="$store.collectQueue.courtSelection.includes(player.id) ? 'border-zinc-900 bg-amber-100' : 'border-zinc-300 bg-white'">
+                            <span class="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-full border border-zinc-900 bg-zinc-900 text-base font-bold tabular-nums text-white sm:size-14 sm:text-lg" x-text="player.number ?? '—'"></span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block truncate text-sm font-semibold sm:text-base" x-text="player.name"></span>
+                                <span x-show="$store.collectQueue.substitutionRole(player.id) === 'enters'" class="block text-xs font-medium text-green-700">{{ __('Comes in') }}</span>
+                            </span>
+                            <span x-cloak x-show="$store.collectQueue.foulCount(player.id) > 0" class="flex shrink-0 items-center gap-1">
+                                <template x-for="mark in $store.collectQueue.foulMarks(player.id)" :key="'edit-bench-foul-' + player.id + '-' + mark">
+                                    <span
+                                        class="size-2.5 rounded-sm"
+                                        :class="{
+                                            'bg-green-700': $store.collectQueue.foulCount(player.id) <= 3,
+                                            'bg-orange-600': $store.collectQueue.foulCount(player.id) === 4,
+                                            'bg-red-700': $store.collectQueue.foulCount(player.id) >= 5,
+                                        }"
+                                    ></span>
+                                </template>
+                            </span>
+                        </button>
+                    </template>
                 </div>
-            </template>
+            </div>
         </div>
         <div x-cloak x-show="$store.collectQueue.editingType !== 'timeout' && $store.collectQueue.editingType !== 'substitution'">
             <div class="mx-auto mt-6 grid max-w-md grid-cols-2 gap-2" x-show="$store.collectQueue.editableTypesForEdit().length > 1">
