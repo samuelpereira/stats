@@ -27,6 +27,12 @@ class Edit extends Component
     #[Locked]
     public Player $player;
 
+    #[Locked]
+    public string $listSeasonId = '';
+
+    #[Locked]
+    public string $listTeamId = '';
+
     public string $name = '';
 
     public string $teamId = '';
@@ -50,6 +56,8 @@ class Edit extends Component
         $this->authorize('update', $player);
 
         $this->player = $player;
+        $this->listSeasonId = request()->has('season') ? request()->string('season')->toString() : '';
+        $this->listTeamId = request()->has('team') ? request()->string('team')->toString() : '';
         $this->name = $player->name;
         $this->teamId = (string) $player->team_id;
         $this->fpbId = $player->fpb_id ?? '';
@@ -82,7 +90,22 @@ class Edit extends Component
 
         Flux::toast(variant: 'success', text: __('Player updated.'));
 
-        $this->redirect(route('players.index'), navigate: true);
+        $this->redirect($this->playersIndexUrl(), navigate: true);
+    }
+
+    public function playersIndexUrl(): string
+    {
+        $filters = [];
+
+        if ($this->listSeasonId !== '') {
+            $filters['season'] = $this->listSeasonId;
+        }
+
+        if ($this->listTeamId !== '') {
+            $filters['team'] = $this->listTeamId;
+        }
+
+        return route('players.index', $filters);
     }
 
     /**

@@ -244,6 +244,55 @@ test('games index filters by season and team', function () {
         ->assertDontSee('Past Opponent');
 });
 
+test('the games list keeps the team filter in the address and on the statistics link', function () {
+    $administrator = User::factory()->administrator()->create();
+    $pastSeason = Season::factory()->create(['is_current' => false]);
+    $currentSeason = Season::factory()->current()->create();
+    $pastTeam = Team::factory()->create(['season_id' => $pastSeason->id]);
+    $currentTeam = Team::factory()->create(['season_id' => $currentSeason->id]);
+    $pastGame = Game::factory()->create([
+        'team_id' => $pastTeam->id,
+        'opponent' => 'Past Opponent',
+        'status' => GameStatus::Played,
+    ]);
+    GameEvent::factory()->create(['game_id' => $pastGame->id]);
+    Game::factory()->create([
+        'team_id' => $currentTeam->id,
+        'opponent' => 'Current Opponent',
+    ]);
+
+    $this->actingAs($administrator)
+        ->get(route('games.index', [
+            'season' => $pastSeason->id,
+            'team' => $pastTeam->id,
+        ]))
+        ->assertOk()
+        ->assertSee('Past Opponent')
+        ->assertDontSee('Current Opponent')
+        ->assertSee(route('statistics.show', [
+            'game' => $pastGame,
+            'from' => 'games',
+            'season' => $pastSeason->id,
+            'team' => $pastTeam->id,
+        ]));
+});
+
+test('an empty season query shows games from every season', function () {
+    $administrator = User::factory()->administrator()->create();
+    $pastSeason = Season::factory()->create(['is_current' => false]);
+    $currentSeason = Season::factory()->current()->create();
+    $pastTeam = Team::factory()->create(['season_id' => $pastSeason->id]);
+    $currentTeam = Team::factory()->create(['season_id' => $currentSeason->id]);
+    Game::factory()->create(['team_id' => $pastTeam->id, 'opponent' => 'Past Opponent']);
+    Game::factory()->create(['team_id' => $currentTeam->id, 'opponent' => 'Current Opponent']);
+
+    $this->actingAs($administrator)
+        ->get(route('games.index', ['season' => '']))
+        ->assertOk()
+        ->assertSee('Past Opponent')
+        ->assertSee('Current Opponent');
+});
+
 test('the games list shows who plays at home and who plays away', function () {
     $administrator = User::factory()->administrator()->create();
     $team = Team::factory()->create(['name' => 'North City']);

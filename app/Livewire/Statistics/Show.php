@@ -47,11 +47,33 @@ class Show extends Component
     {
         return match ($from) {
             'dashboard' => route('dashboard'),
-            'games' => route('games.index'),
+            'games' => route('games.index', $this->gamesListFilters()),
             'statistics' => route('statistics.index'),
             'record' => route('statistics.record', $this->game),
             default => route('statistics.index'),
         };
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function gamesListFilters(): array
+    {
+        $filters = [];
+
+        foreach (['season', 'team'] as $key) {
+            if (! request()->has($key)) {
+                continue;
+            }
+
+            $value = request()->string($key)->toString();
+
+            if ($value !== '') {
+                $filters[$key] = $value;
+            }
+        }
+
+        return $filters;
     }
 
     public function openShare(ShareGameStatistics $share): void

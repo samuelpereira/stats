@@ -34,7 +34,7 @@
         <div class="flex items-center gap-4">
             <flux:button variant="primary" type="submit">{{ __('Save') }}</flux:button>
 
-            <flux:button :href="route('players.index')" wire:navigate>{{ __('Cancel') }}</flux:button>
+            <flux:button :href="$this->playersIndexUrl()" wire:navigate>{{ __('Cancel') }}</flux:button>
         </div>
     </form>
 </div>

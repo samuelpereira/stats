@@ -61,7 +61,7 @@
                     </x-listing.cell>
                     <x-listing.cell actions>
                         <x-listing.actions :edit-href="route('games.edit', $game)" :delete-record-id="$game->uuid">
-                            <x-statistics.game-actions :game="$game" from="games" />
+                            <x-statistics.game-actions :game="$game" from="games" :season="$this->seasonId" :team="$this->teamId" />
                         </x-listing.actions>
                     </x-listing.cell>
                 </tr>

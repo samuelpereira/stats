@@ -3,6 +3,7 @@
 use App\Enums\Gender;
 use App\Livewire\Clubs\Index as ClubIndex;
 use App\Livewire\Players\Create as CreatePlayer;
+use App\Livewire\Players\Edit as EditPlayer;
 use App\Livewire\Players\Index as PlayerIndex;
 use App\Livewire\Seasons\Create as CreateSeason;
 use App\Livewire\Seasons\Edit as EditSeason;
@@ -404,6 +405,58 @@ test('players index filters by season and team', function () {
         ->assertSee('Team A Player')
         ->assertDontSee('Team B Player')
         ->assertDontSee('Past Player');
+});
+
+test('the players list keeps the team filter in the address and on the edit link', function () {
+    $administrator = User::factory()->administrator()->create();
+    $pastSeason = Season::factory()->create(['is_current' => false]);
+    $currentSeason = Season::factory()->current()->create();
+    $pastTeam = Team::factory()->create(['season_id' => $pastSeason->id]);
+    $currentTeam = Team::factory()->create(['season_id' => $currentSeason->id]);
+    $pastPlayer = Player::factory()->create(['team_id' => $pastTeam->id, 'name' => 'Past Player']);
+    Player::factory()->create(['team_id' => $currentTeam->id, 'name' => 'Current Player']);
+
+    $this->actingAs($administrator)
+        ->get(route('players.index', [
+            'season' => $pastSeason->id,
+            'team' => $pastTeam->id,
+        ]))
+        ->assertOk()
+        ->assertSee('Past Player')
+        ->assertDontSee('Current Player')
+        ->assertSee(route('players.edit', [
+            'player' => $pastPlayer,
+            'season' => $pastSeason->id,
+            'team' => $pastTeam->id,
+        ]));
+});
+
+test('saving a player returns to the same players filter', function () {
+    $administrator = User::factory()->administrator()->create();
+    $season = Season::factory()->create();
+    $team = Team::factory()->create(['season_id' => $season->id]);
+    $player = Player::factory()->create(['team_id' => $team->id]);
+
+    try {
+        Livewire::withQueryParams([
+            'season' => (string) $season->id,
+            'team' => (string) $team->id,
+        ])
+            ->actingAs($administrator)
+            ->test(EditPlayer::class, ['player' => $player])
+            ->assertSee(route('players.index', [
+                'season' => $season->id,
+                'team' => $team->id,
+            ]))
+            ->call('save')
+            ->assertHasNoErrors()
+            ->assertRedirect(route('players.index', [
+                'season' => $season->id,
+                'team' => $team->id,
+            ]));
+    } finally {
+        Livewire::withQueryParams([]);
+    }
 });
 
 test('a player is listed and edited by its uuid', function () {

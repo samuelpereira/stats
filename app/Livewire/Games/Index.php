@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 #[Title('Games')]
@@ -24,18 +25,28 @@ class Index extends Component
 {
     use ConfirmsDeletion, InteractsWithAuthenticatedUser, PaginatesListings;
 
+    #[Url(as: 'season', except: '')]
     public string $seasonId = '';
 
+    #[Url(as: 'team', except: '')]
     public string $teamId = '';
 
     public function mount(): void
     {
         $this->authorize('viewAny', Game::class);
 
-        $currentSeason = Season::query()->where('is_current', true)->first();
+        if (request()->has('season')) {
+            $this->seasonId = request()->string('season')->toString();
+        } else {
+            $currentSeason = Season::query()->where('is_current', true)->first();
 
-        if ($currentSeason !== null) {
-            $this->seasonId = (string) $currentSeason->id;
+            if ($currentSeason !== null) {
+                $this->seasonId = (string) $currentSeason->id;
+            }
+        }
+
+        if (request()->has('team')) {
+            $this->teamId = request()->string('team')->toString();
         }
     }
 

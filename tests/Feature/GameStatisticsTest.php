@@ -139,6 +139,19 @@ test('the statistics button opens the game box score', function () {
         ->assertSee(route('games.index'), false);
 
     $this->actingAs($member)
+        ->get(route('statistics.show', [
+            'game' => $game,
+            'from' => 'games',
+            'season' => $team->season_id,
+            'team' => $team->id,
+        ]))
+        ->assertOk()
+        ->assertSee(route('games.index', [
+            'season' => $team->season_id,
+            'team' => $team->id,
+        ]));
+
+    $this->actingAs($member)
         ->get(route('statistics.show', ['game' => $game, 'from' => 'record']))
         ->assertSee(route('statistics.record', $game), false);
 
