@@ -29,7 +29,7 @@
             <thead>
                 <tr class="border-b border-zinc-200 text-left text-xs font-medium tracking-wide text-zinc-500 uppercase">
                     <th class="px-4 py-3 font-medium">{{ __('Date and time') }}</th>
-                    <th class="px-4 py-3 font-medium">{{ __('At home') }}</th>
+                    <th class="px-4 py-3 text-right font-medium">{{ __('At home') }}</th>
                     <th class="px-4 py-3 font-medium">{{ __('Away') }}</th>
                     <th class="px-4 py-3 text-right font-medium">{{ __('Actions') }}</th>
                 </tr>
@@ -40,9 +40,9 @@
                         <x-listing.cell :label="__('Date and time')">{{ $game->date_time->format('d/m/Y H:i') }}</x-listing.cell>
                         <x-listing.cell :label="__('At home')">
                             @if ($game->home_away === \App\Enums\HomeAway::Home)
-                                <x-games.side :name="$game->team->name" :photo-url="$game->team->photo_url" emphasis />
+                                <x-games.side :name="$game->team->name" :photo-url="$game->team->photo_url" emphasis logo-last />
                             @else
-                                <x-games.side :name="$game->opponent" :photo-url="$game->opponent_photo_url" />
+                                <x-games.side :name="$game->opponent" :photo-url="$game->opponent_photo_url" logo-last />
                             @endif
                         </x-listing.cell>
                         <x-listing.cell :label="__('Away')">

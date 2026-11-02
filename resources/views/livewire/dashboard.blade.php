@@ -42,21 +42,8 @@
                     <ul class="divide-y divide-zinc-100">
                         @foreach ($this->upcomingGames as $game)
                             <li wire:key="upcoming-{{ $game->uuid }}" class="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                                <div class="min-w-0">
-                                    <p class="truncate text-zinc-600">
-                                        @if ($game->home_away === \App\Enums\HomeAway::Home)
-                                            <span class="font-bold text-zinc-900">{{ $game->team->name }}</span>
-                                        @else
-                                            {{ $game->opponent }}
-                                        @endif
-                                        <span class="text-zinc-400">·</span>
-                                        @if ($game->home_away === \App\Enums\HomeAway::Away)
-                                            <span class="font-bold text-zinc-900">{{ $game->team->name }}</span>
-                                        @else
-                                            {{ $game->opponent }}
-                                        @endif
-                                    </p>
-                                    <p class="text-sm text-zinc-500">{{ $game->date_time->format('d/m/Y H:i') }}</p>
+                                <div class="min-w-0 w-full flex-1">
+                                    <x-games.matchup :game="$game" />
                                 </div>
                                 <x-statistics.game-actions :game="$game" from="dashboard" class="shrink-0" />
                             </li>
@@ -73,26 +60,8 @@
                     <ul class="divide-y divide-zinc-100">
                         @foreach ($this->recentGames as $game)
                             <li wire:key="recent-{{ $game->uuid }}" class="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                                <div class="min-w-0">
-                                    <p class="truncate text-zinc-600">
-                                        @if ($game->home_away === \App\Enums\HomeAway::Home)
-                                            <span class="font-bold text-zinc-900">{{ $game->team->name }}</span>
-                                        @else
-                                            {{ $game->opponent }}
-                                        @endif
-                                        <span class="text-zinc-400">·</span>
-                                        @if ($game->home_away === \App\Enums\HomeAway::Away)
-                                            <span class="font-bold text-zinc-900">{{ $game->team->name }}</span>
-                                        @else
-                                            {{ $game->opponent }}
-                                        @endif
-                                    </p>
-                                    <p class="text-sm text-zinc-500">
-                                        {{ $game->date_time->format('d/m/Y H:i') }}
-                                        @if ($game->score())
-                                            · {{ $game->score() }}
-                                        @endif
-                                    </p>
+                                <div class="min-w-0 w-full flex-1">
+                                    <x-games.matchup :game="$game" />
                                 </div>
                                 <x-statistics.game-actions :game="$game" from="dashboard" class="shrink-0" />
                             </li>

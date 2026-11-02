@@ -2,9 +2,15 @@
     'name',
     'photoUrl' => null,
     'emphasis' => false,
+    'logoLast' => false,
+    'justifyEndOnMobile' => true,
 ])
 
-<div {{ $attributes->class(['flex min-w-0 max-w-full items-center gap-2 max-sm:justify-end']) }}>
+<div {{ $attributes->class([
+    'flex min-w-0 max-w-full items-center gap-2',
+    'flex-row-reverse' => $logoLast,
+    'max-sm:justify-end' => ! $logoLast && $justifyEndOnMobile,
+]) }}>
     <span class="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-200 bg-zinc-50">
         @if ($photoUrl)
             <img src="{{ $photoUrl }}" alt="" class="absolute inset-0 size-full object-cover" />
