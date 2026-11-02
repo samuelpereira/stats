@@ -2311,7 +2311,10 @@ test('a decided fourth quarter can continue as the next period', function () {
         ->assertSee('Start of OT1')
         ->assertSee('Start OT1')
         ->assertSee('end of Q4')
-        ->assertDontSee('Start of Q5');
+        ->assertDontSee('Start of Q5')
+        ->assertSee('x-text="($store.collectQueue.local || $store.collectQueue.baseline) ? $store.collectQueue.periodLabel() : $el.textContent"', false)
+        ->assertSee('x-text="($store.collectQueue.local || $store.collectQueue.baseline) ? $store.collectQueue.startPeriodAction() : $el.textContent"', false)
+        ->assertSee('x-text="($store.collectQueue.local || $store.collectQueue.baseline) ? $store.collectQueue.endPeriodAction() : $el.textContent"', false);
 
     statisticsRecord($member, $game, false)
         ->assertSet('quarter', 5)

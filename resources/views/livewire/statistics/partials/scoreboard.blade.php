@@ -32,8 +32,7 @@
                     </button>
                 @endif
                 <p class="text-xs text-zinc-300 lg:text-sm">
-                    <span x-show="! $store.collectQueue.periodDiffers()">{{ $awaitingQuarterStart ? $awaitingPeriodLabel : $periodName }}</span>
-                    <span x-cloak x-show="$store.collectQueue.periodDiffers()" x-text="$store.collectQueue.periodLabel()"></span>
+                    <span x-text="($store.collectQueue.local || $store.collectQueue.baseline) ? $store.collectQueue.periodLabel() : $el.textContent">{{ $awaitingQuarterStart ? $awaitingPeriodLabel : $periodName }}</span>
                 </p>
             </div>
             <button type="button" @click="$store.gameClock.adjust(5)" class="flex flex-col items-center gap-1 text-white">
@@ -53,7 +52,7 @@
             >
                 <span x-show="$store.collectQueue.awaitingStart() && ! $store.collectQueue.gameFinished()" class="flex flex-col items-center gap-0.5">
                     <flux:icon name="play" variant="solid" class="size-5" />
-                    <span x-text="$store.collectQueue.periodDiffers() ? $store.collectQueue.startPeriodAction() : @js($this->nextPeriodCanStart() ? $startPeriodAction : '')">@if ($this->nextPeriodCanStart()){{ $startPeriodAction }}@endif</span>
+                    <span x-text="($store.collectQueue.local || $store.collectQueue.baseline) ? $store.collectQueue.startPeriodAction() : $el.textContent">@if ($this->nextPeriodCanStart()){{ $startPeriodAction }}@endif</span>
                 </span>
                 <span x-show="! $store.collectQueue.awaitingStart() && ! $store.gameClock.running && ($store.gameClock.remaining > 0 || $store.collectQueue.quarterEnded())" class="flex flex-col items-center gap-0.5">
                     <flux:icon name="play" variant="solid" class="size-5" />
@@ -65,7 +64,7 @@
                 </span>
                 <span x-cloak x-show="! $store.collectQueue.awaitingStart() && ! $store.gameClock.running && $store.gameClock.remaining === 0 && ! $store.collectQueue.quarterEnded()" class="flex flex-col items-center gap-0.5">
                     <flux:icon name="forward" variant="solid" class="size-5" />
-                    {{ $endPeriodAction }}
+                    <span x-text="($store.collectQueue.local || $store.collectQueue.baseline) ? $store.collectQueue.endPeriodAction() : $el.textContent">{{ $endPeriodAction }}</span>
                 </span>
             </button>
         </div>

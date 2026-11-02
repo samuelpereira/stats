@@ -997,20 +997,19 @@ function createCollectQueue() {
             return this.items.length === 0 && Boolean(this.baseline?.canUndo);
         },
 
-        periodDiffers() {
-            if (! this.local || ! this.baseline) {
-                return false;
+        periodLabel() {
+            const source = this.local ?? this.baseline;
+            const quarter = Number(source?.quarter ?? 1);
+            const templates = this.baseline?.templates ?? {};
+            const awaiting = Boolean(source?.awaitingQuarterStart);
+
+            if (awaiting && this.gameFinished() && quarter > 4) {
+                const previous = quarter - 1;
+
+                return previous > 4 ? `OT${previous - 4}` : `Q${previous}`;
             }
 
-            return this.local.quarter !== this.baseline.quarter
-                || this.local.awaitingQuarterStart !== this.baseline.awaitingQuarterStart;
-        },
-
-        periodLabel() {
-            const quarter = this.local?.quarter ?? 1;
-            const templates = this.baseline?.templates ?? {};
-
-            if (this.local?.awaitingQuarterStart) {
+            if (awaiting) {
                 if (quarter > 4) {
                     return fill(templates.startOfOvertime, ':overtime', quarter - 4);
                 }
