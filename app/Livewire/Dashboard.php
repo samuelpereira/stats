@@ -157,9 +157,13 @@ class Dashboard extends Component
 
         $currentSeason = $this->currentSeason();
 
-        if ($currentSeason !== null) {
-            $query->whereHas('team', fn (Builder $teamQuery) => $teamQuery->where('season_id', $currentSeason->id));
-        }
+        $query->whereHas('team', function (Builder $teamQuery) use ($currentSeason): void {
+            $teamQuery->where('enabled', true);
+
+            if ($currentSeason !== null) {
+                $teamQuery->where('season_id', $currentSeason->id);
+            }
+        });
 
         if (! $this->actor()->can(PermissionName::CreateClubs->value)) {
             $query->forStatisticsCollector($this->actor());

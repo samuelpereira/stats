@@ -73,6 +73,31 @@ test('the dashboard lists the home side before the away side', function () {
         ->assertDontSee('At home');
 });
 
+test('the dashboard hides games from teams that are not enabled', function () {
+    $club = Club::factory()->create();
+    $access = User::factory()->clubAccessFor($club)->create();
+    $season = Season::factory()->current()->create();
+    $activeTeam = Team::factory()->create(['club_id' => $club->id, 'season_id' => $season->id, 'enabled' => true]);
+    $inactiveTeam = Team::factory()->create(['club_id' => $club->id, 'season_id' => $season->id, 'enabled' => false]);
+    Game::factory()->create([
+        'team_id' => $activeTeam->id,
+        'opponent' => 'Shown Opponent',
+        'date_time' => now()->addDay(),
+        'status' => GameStatus::Scheduled,
+    ]);
+    Game::factory()->create([
+        'team_id' => $inactiveTeam->id,
+        'opponent' => 'Hidden Opponent',
+        'date_time' => now()->addDays(2),
+        'status' => GameStatus::Scheduled,
+    ]);
+
+    Livewire::actingAs($access)
+        ->test(Dashboard::class)
+        ->assertSee('Shown Opponent')
+        ->assertDontSee('Hidden Opponent');
+});
+
 test('the dashboard recent games list only includes past games with a statistics log', function () {
     $club = Club::factory()->create();
     $access = User::factory()->clubAccessFor($club)->create();
