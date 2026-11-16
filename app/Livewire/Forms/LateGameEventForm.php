@@ -20,6 +20,9 @@ class LateGameEventForm extends Form
 
     public ?string $foulKind = null;
 
+    /** The player who goes out, for a substitution ("actor" is who comes in). */
+    public ?int $outgoing = null;
+
     /**
      * @return array<string, mixed>
      */
@@ -31,6 +34,7 @@ class LateGameEventForm extends Form
             'type' => ['required', Rule::in(self::typeValues())],
             'actor' => ['required', 'regex:/^(player:\d+|coach|team|opponent)$/'],
             'foulKind' => ['nullable', Rule::enum(FoulKind::class)],
+            'outgoing' => ['nullable', 'integer', Rule::requiredIf($this->type === StatType::Substitution->value)],
         ];
     }
 
@@ -43,11 +47,12 @@ class LateGameEventForm extends Form
             'clock.regex' => __('The clock must use minutes and seconds, such as 05:00.'),
             'actor.required' => __('Choose who made the action.'),
             'actor.regex' => __('Choose who made the action.'),
+            'outgoing.required' => __('Choose who goes out.'),
         ];
     }
 
     /**
-     * Actions that can be added after the game: every stat and the timeout.
+     * Actions that can be added to an ended period: every stat, the substitution and the timeout.
      *
      * @return list<StatType>
      */
@@ -55,7 +60,7 @@ class LateGameEventForm extends Form
     {
         return array_values(array_filter(
             StatType::cases(),
-            fn (StatType $type): bool => $type === StatType::Timeout || $type->isAssignableStat(),
+            fn (StatType $type): bool => ! $type->isPeriod(),
         ));
     }
 

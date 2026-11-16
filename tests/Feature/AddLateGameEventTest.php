@@ -306,14 +306,78 @@ test('undo never removes an action added to an ended period', function () {
     expect($game->events()->where('type', StatType::Block)->exists())->toBeTrue();
 });
 
-test('substitutions and period markers cannot be added after the game', function () {
-    [$game, $player] = endedGame(GameStatus::Played);
+test('period markers cannot be added to an ended period', function () {
+    [$game] = endedGame(GameStatus::Played);
     $admin = User::factory()->administrator()->create();
 
-    expect(fn () => app(AddLateGameEvent::class)->handle($admin, $game, 1, '05:00', StatType::Substitution, $player->id, false))
+    expect(fn () => app(AddLateGameEvent::class)->handle($admin, $game, 1, '05:00', StatType::QuarterEnded, null, false))
         ->toThrow(ValidationException::class)
-        ->and(fn () => app(AddLateGameEvent::class)->handle($admin, $game, 1, '05:00', StatType::QuarterEnded, null, false))
+        ->and(fn () => app(AddLateGameEvent::class)->handle($admin, $game, 1, '05:00', StatType::QuarterStarted, null, false))
         ->toThrow(ValidationException::class);
+});
+
+test('a substitution added to an ended period recalculates playing time', function () {
+    [$game, $starter] = endedGame(GameStatus::Played);
+    $admin = User::factory()->administrator()->create();
+    $bench = Player::factory()->create(['team_id' => $game->team_id]);
+    $game->players()->attach($bench->id, ['starter' => false]);
+
+    Livewire::actingAs($admin)
+        ->test(StatisticsRecord::class, ['game' => $game])
+        ->call('openLateAction')
+        ->set('lateEvent.quarter', 2)
+        ->set('lateEvent.clock', '05:00')
+        ->set('lateEvent.type', StatType::Substitution->value)
+        ->set('lateEvent.actor', 'player:'.$bench->id)
+        ->set('lateEvent.outgoing', $starter->id)
+        ->call('saveLateAction')
+        ->assertHasNoErrors();
+
+    $substitution = $game->events()->where('type', StatType::Substitution)->sole();
+
+    expect($substitution->quarter)->toBe(2)
+        ->and($substitution->clock)->toBe('05:00')
+        ->and($substitution->player_id)->toBe($bench->id)
+        ->and($substitution->outgoing_player_id)->toBe($starter->id);
+
+    $seconds = collect($game->boxScore()['players'])->pluck('seconds', 'id');
+
+    expect($seconds[$starter->id])->toBe(15 * 60)
+        ->and($seconds[$bench->id])->toBe(25 * 60);
+});
+
+test('a substitution is added even when it does not match who the log has on the court', function () {
+    [$game] = endedGame(GameStatus::Played);
+    $admin = User::factory()->administrator()->create();
+    $benchOne = Player::factory()->create(['team_id' => $game->team_id]);
+    $benchTwo = Player::factory()->create(['team_id' => $game->team_id]);
+    $game->players()->attach([$benchOne->id => ['starter' => false], $benchTwo->id => ['starter' => false]]);
+
+    app(AddLateGameEvent::class)->handle($admin, $game, 3, '04:00', StatType::Substitution, $benchOne->id, false, null, $benchTwo->id);
+
+    expect($game->events()->where('type', StatType::Substitution)->sole()->outgoing_player_id)->toBe($benchTwo->id);
+});
+
+test('a late substitution needs two different players of the game', function () {
+    [$game, $player] = endedGame(GameStatus::Played);
+    $admin = User::factory()->administrator()->create();
+    $outsider = Player::factory()->create(['team_id' => $game->team_id]);
+    $add = fn (?int $in, ?int $out) => app(AddLateGameEvent::class)
+        ->handle($admin, $game, 1, '05:00', StatType::Substitution, $in, false, null, $out);
+
+    expect(fn () => $add($player->id, $player->id))->toThrow(ValidationException::class)
+        ->and(fn () => $add($outsider->id, $player->id))->toThrow(ValidationException::class)
+        ->and(fn () => $add($player->id, $outsider->id))->toThrow(ValidationException::class)
+        ->and(fn () => $add($player->id, null))->toThrow(ValidationException::class)
+        ->and($game->events()->where('type', StatType::Substitution)->exists())->toBeFalse();
+
+    Livewire::actingAs($admin)
+        ->test(StatisticsRecord::class, ['game' => $game])
+        ->call('openLateAction')
+        ->set('lateEvent.type', StatType::Substitution->value)
+        ->set('lateEvent.actor', 'player:'.$player->id)
+        ->call('saveLateAction')
+        ->assertHasErrors(['lateEvent.outgoing']);
 });
 
 test('editing a logged basket of a played game refreshes the saved score', function () {

@@ -861,6 +861,7 @@ class Record extends Component
                 $this->lateEvent->playerId(),
                 $this->lateEvent->forOpponent(),
                 $this->lateEvent->foulKindEnum(),
+                $this->lateEvent->outgoing,
             );
         } catch (ValidationException $exception) {
             foreach ($exception->errors() as $field => $messages) {
@@ -873,7 +874,7 @@ class Record extends Component
         $this->cancelLateAction();
         $this->game->refresh();
         $this->forgetCollectedEvents();
-        unset($this->lines, $this->fouls, $this->timeouts, $this->lineup, $this->canUndo);
+        unset($this->lines, $this->fouls, $this->timeouts, $this->lineup, $this->canUndo, $this->squad, $this->courtPlayers, $this->benchPlayers, $this->protectedSquadIds);
     }
 
     #[Computed]

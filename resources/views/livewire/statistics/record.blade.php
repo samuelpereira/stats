@@ -821,7 +821,22 @@
                 </flux:select>
             @endif
 
-            @if ($lateEvent->type !== '')
+            @if ($lateEvent->type === \App\Enums\StatType::Substitution->value)
+                <div class="grid grid-cols-2 gap-3">
+                    <flux:select wire:model="lateEvent.actor" :label="__('Comes in')">
+                        <flux:select.option value="">{{ __('Choose…') }}</flux:select.option>
+                        @foreach ($this->attachedPlayers as $player)
+                            <flux:select.option value="player:{{ $player->id }}">{{ $player->number === null ? '' : '#'.$player->number.' ' }}{{ $player->name }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                    <flux:select wire:model="lateEvent.outgoing" :label="__('Goes out')">
+                        <flux:select.option value="">{{ __('Choose…') }}</flux:select.option>
+                        @foreach ($this->attachedPlayers as $player)
+                            <flux:select.option :value="$player->id">{{ $player->number === null ? '' : '#'.$player->number.' ' }}{{ $player->name }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                </div>
+            @elseif ($lateEvent->type !== '')
                 <flux:select wire:model="lateEvent.actor" :label="$lateEvent->type === \App\Enums\StatType::Timeout->value ? __('Team') : __('Player')">
                     <flux:select.option value="">{{ __('Choose…') }}</flux:select.option>
                     @if ($lateEvent->type === \App\Enums\StatType::Timeout->value)

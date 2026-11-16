@@ -29,12 +29,13 @@ class AddLateGameEvent
         ?int $playerId,
         bool $forOpponent,
         ?FoulKind $foulKind = null,
+        ?int $outgoingPlayerId = null,
     ): GameEvent {
         if (! $actor->can('addLateEvent', $game)) {
             throw new AuthorizationException;
         }
 
-        if ($type !== StatType::Timeout && ! $type->isAssignableStat()) {
+        if ($type !== StatType::Timeout && $type !== StatType::Substitution && ! $type->isAssignableStat()) {
             $this->invalid('type', __('The collected action is not valid.'));
         }
 
@@ -43,6 +44,10 @@ class AddLateGameEvent
         }
 
         $clock = $this->clock($game, $quarter, $clock);
+
+        if ($type === StatType::Substitution) {
+            return $this->substitute($game, $playerId, $outgoingPlayerId, $quarter, $clock);
+        }
 
         if ($type !== StatType::Foul) {
             $foulKind = null;
@@ -75,6 +80,30 @@ class AddLateGameEvent
 
             return $event;
         });
+    }
+
+    /**
+     * The court at that moment is not checked: the log may already be out of
+     * step, and this is how it gets corrected.
+     */
+    private function substitute(Game $game, ?int $incomingId, ?int $outgoingId, int $quarter, string $clock): GameEvent
+    {
+        $incoming = $incomingId === null ? null : $game->players()->whereKey($incomingId)->first();
+        $outgoing = $outgoingId === null ? null : $game->players()->whereKey($outgoingId)->first();
+
+        if (! $incoming instanceof Player) {
+            $this->invalid('actor', __('Choose who comes in.'));
+        }
+
+        if (! $outgoing instanceof Player) {
+            $this->invalid('outgoing', __('Choose who goes out.'));
+        }
+
+        if ($incoming->id === $outgoing->id) {
+            $this->invalid('outgoing', __('The player who comes in and the player who goes out must be different.'));
+        }
+
+        return $this->recordGameEvent->substitute($game, $incoming->id, $outgoing->id, $quarter, $clock);
     }
 
     private function courtPlayer(Game $game, int $playerId, int $quarter, string $clock): Player
