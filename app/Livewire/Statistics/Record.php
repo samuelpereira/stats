@@ -1591,7 +1591,11 @@ class Record extends Component
     }
 
     /**
-     * @return list<array{id: int, label: string, player: string, playerLines: list<array{enters: bool, name: string}>, detail: string, missed: bool, points: int, quarter: int, clock: string, score: string, editable: bool, side: string|null, actionKey: string, playerKeys: list<string>, type: string|null, playerId: int|null, outgoingPlayerId: int|null, forOpponent: bool, foulKind: string|null, courtX: int|null, courtY: int|null}>
+     * Each line carries "court": who was on the court at that moment (before a
+     * substitution is applied), walked forward like Game::courtAt() so the edit
+     * screen offers exactly the players the server accepts.
+     *
+     * @return list<array{id: int, label: string, player: string, playerLines: list<array{enters: bool, name: string}>, detail: string, missed: bool, points: int, quarter: int, clock: string, score: string, editable: bool, side: string|null, actionKey: string, playerKeys: list<string>, type: string|null, playerId: int|null, outgoingPlayerId: int|null, forOpponent: bool, foulKind: string|null, courtX: int|null, courtY: int|null, court: list<int>}>
      */
     private function lineItems(): array
     {
@@ -1604,8 +1608,25 @@ class Record extends Component
         $lines = [];
         $teamScore = 0;
         $opponentScore = 0;
+        $court = [];
+
+        foreach ($this->game->players()->wherePivot('starter', true)->pluck('players.id') as $playerId) {
+            $court[] = (int) $playerId;
+        }
 
         foreach ($events as $event) {
+            $courtBefore = $court;
+
+            if ($event->type === StatType::Substitution && $event->player_id !== null && $event->outgoing_player_id !== null) {
+                $outgoingId = (int) $event->outgoing_player_id;
+                $incomingId = (int) $event->player_id;
+                $court = array_values(array_filter($court, fn (int $playerId): bool => $playerId !== $outgoingId));
+
+                if (! in_array($incomingId, $court, true)) {
+                    $court[] = $incomingId;
+                }
+            }
+
             if ($event->type->isPeriod()) {
                 $lines[] = [
                     'id' => $event->id,
@@ -1629,6 +1650,7 @@ class Record extends Component
                     'foulKind' => null,
                     'courtX' => null,
                     'courtY' => null,
+                    'court' => $courtBefore,
                 ];
 
                 continue;
@@ -1723,6 +1745,7 @@ class Record extends Component
                 'foulKind' => $event->foul_kind?->value,
                 'courtX' => $event->court_x,
                 'courtY' => $event->court_y,
+                'court' => $courtBefore,
             ];
         }
 

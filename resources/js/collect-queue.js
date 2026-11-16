@@ -1197,6 +1197,12 @@ function createCollectQueue() {
                 return court;
             }
 
+            // The server sends who was on the court at that moment, walked forward
+            // through every substitution, including ones added later to an ended period.
+            if (Array.isArray(lines[index].court)) {
+                return lines[index].court.map((id) => Number(id));
+            }
+
             lines.slice(0, index + 1).forEach((line) => {
                 court = this.undoSubstitutionOnCourt(court, line);
             });
@@ -1865,6 +1871,15 @@ function createCollectQueue() {
 
                 if (index < 0) {
                     return roster;
+                }
+
+                if (Array.isArray(lines[index].court)) {
+                    // The server sends who was on the court at that moment; the player
+                    // already on the action is always kept, as the server accepts it.
+                    const courtAtLine = lines[index].court.map((id) => Number(id));
+                    const current = Number(lines[index].playerId);
+
+                    return roster.filter((player) => courtAtLine.includes(Number(player.id)) || Number(player.id) === current);
                 }
 
                 // Lines are newest first: walk back over later substitutions.

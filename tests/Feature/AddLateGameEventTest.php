@@ -413,3 +413,47 @@ test('editing a logged basket of a game that is not played leaves the score empt
     expect($game->refresh()->home_points)->toBeNull()
         ->and($game->away_points)->toBeNull();
 });
+
+test('each log line carries the court at that moment, including substitutions added later to an ended period', function () {
+    $game = Game::factory()->create([
+        'team_id' => Team::factory()->create(['club_id' => Club::factory()->create()->id])->id,
+        'home_away' => HomeAway::Home,
+        'quarter_minutes' => 10,
+    ]);
+    $starter = Player::factory()->create(['team_id' => $game->team_id]);
+    giveStartingFive($game, $starter);
+    $forgotten = Player::factory()->create(['team_id' => $game->team_id]);
+    $later = Player::factory()->create(['team_id' => $game->team_id]);
+    $game->players()->attach([$forgotten->id => ['starter' => false], $later->id => ['starter' => false]]);
+    $admin = User::factory()->administrator()->create();
+
+    $game->events()->create(['type' => StatType::QuarterStarted, 'quarter' => 1, 'clock' => '10:00']);
+    $steal = $game->events()->create(['type' => StatType::Steal, 'quarter' => 1, 'clock' => '04:00', 'player_id' => $starter->id, 'home_away' => HomeAway::Home]);
+    $game->events()->create(['type' => StatType::QuarterEnded, 'quarter' => 1, 'clock' => '00:00']);
+    $game->events()->create(['type' => StatType::QuarterStarted, 'quarter' => 2, 'clock' => '10:00']);
+    // Recorded live while the collector still had the starter on the court.
+    $game->events()->create(['type' => StatType::Substitution, 'quarter' => 2, 'clock' => '08:00', 'player_id' => $later->id, 'outgoing_player_id' => $starter->id, 'home_away' => HomeAway::Home]);
+
+    app(AddLateGameEvent::class)->handle($admin, $game, 1, '05:00', StatType::Substitution, $forgotten->id, false, null, $starter->id);
+
+    $record = Livewire::actingAs($admin)->test(StatisticsRecord::class, ['game' => $game]);
+    $lines = collect($record->instance()->lines)->keyBy('id');
+    $stealCourt = $lines[$steal->id]['court'];
+    sort($stealCourt);
+    $expected = $game->courtAt($steal);
+    sort($expected);
+
+    expect($stealCourt)->toBe($expected)
+        ->and($stealCourt)->toContain($forgotten->id)
+        ->and($stealCourt)->not->toContain($starter->id);
+
+    $record->call('applyCollectedAction', (string) Str::uuid(), 'edit', [
+        'eventId' => $steal->id,
+        'type' => StatType::Steal->value,
+        'playerId' => $forgotten->id,
+        'forOpponent' => false,
+        'clock' => '04:00',
+    ]);
+
+    expect($steal->refresh()->player_id)->toBe($forgotten->id);
+});
