@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Statistics;
 
+use App\Actions\AddLateGameEvent;
 use App\Actions\ApplyCollectedAction;
 use App\Actions\DeleteLatestGameEvent;
 use App\Actions\FinishCollectedGame;
@@ -13,6 +14,7 @@ use App\Enums\HomeAway;
 use App\Enums\StatType;
 use App\Enums\TeamColor;
 use App\Livewire\Concerns\InteractsWithAuthenticatedUser;
+use App\Livewire\Forms\LateGameEventForm;
 use App\Models\Game;
 use App\Models\GameEvent;
 use App\Models\Player;
@@ -96,6 +98,10 @@ class Record extends Component
     public bool $confirmingGameFinish = false;
 
     public bool $confirmingExit = false;
+
+    public bool $addingLateAction = false;
+
+    public LateGameEventForm $lateEvent;
 
     /** @var Collection<int, GameEvent>|null */
     private ?Collection $loadedEvents = null;
@@ -813,6 +819,93 @@ class Record extends Component
         $this->js("window.Alpine.store('gameClock')?.apply('{$this->clock}')");
     }
 
+    public function openLateAction(): void
+    {
+        $this->authorize('addLateEvent', $this->game);
+
+        $periods = $this->game->endedPeriods();
+
+        if ($periods === []) {
+            return;
+        }
+
+        $quarter = $periods[array_key_last($periods)];
+        $this->lateEvent->start($quarter, sprintf('%02d:00', $this->game->periodMinutes($quarter)));
+        $this->addingLateAction = true;
+    }
+
+    public function cancelLateAction(): void
+    {
+        $this->addingLateAction = false;
+        $this->lateEvent->reset();
+        $this->resetErrorBag();
+    }
+
+    public function saveLateAction(AddLateGameEvent $addLateGameEvent): void
+    {
+        $this->authorize('addLateEvent', $this->game);
+
+        if (! $this->addingLateAction) {
+            return;
+        }
+
+        $this->lateEvent->validate();
+
+        try {
+            $addLateGameEvent->handle(
+                $this->actor(),
+                $this->game,
+                (int) $this->lateEvent->quarter,
+                $this->lateEvent->clock,
+                $this->lateEvent->stat(),
+                $this->lateEvent->playerId(),
+                $this->lateEvent->forOpponent(),
+                $this->lateEvent->foulKindEnum(),
+            );
+        } catch (ValidationException $exception) {
+            foreach ($exception->errors() as $field => $messages) {
+                $this->addError('lateEvent.'.$field, (string) ($messages[0] ?? ''));
+            }
+
+            return;
+        }
+
+        $this->cancelLateAction();
+        $this->game->refresh();
+        $this->forgetCollectedEvents();
+        unset($this->lines, $this->fouls, $this->timeouts, $this->lineup, $this->canUndo);
+    }
+
+    #[Computed]
+    public function canAddLateActions(): bool
+    {
+        return $this->actor()->can('addLateEvent', $this->game);
+    }
+
+    /**
+     * @return list<array{value: int, label: string}>
+     */
+    #[Computed]
+    public function latePeriods(): array
+    {
+        return array_map(
+            fn (int $quarter): array => ['value' => $quarter, 'label' => $this->periodName($quarter)],
+            $this->game->endedPeriods(),
+        );
+    }
+
+    /**
+     * @return list<array{value: string, label: string}>
+     */
+    #[Computed]
+    public function lateTypes(): array
+    {
+        return array_map(
+            fn (StatType $type): array => ['value' => $type->value, 'label' => __($type->pickerTitle())],
+            LateGameEventForm::types(),
+        );
+    }
+
     public function editAction(int $eventId): void
     {
         $this->authorize('collect', $this->game);
@@ -988,6 +1081,7 @@ class Record extends Component
 
         $this->clearEditingAction();
 
+        $this->game->refresh();
         $this->forgetCollectedEvents();
         unset($this->lines, $this->fouls, $this->timeouts, $this->lineup);
     }
@@ -1936,10 +2030,7 @@ class Record extends Component
 
     private function restorePeriod(): void
     {
-        $latest = GameEvent::query()
-            ->where('game_id', $this->game->id)
-            ->orderByDesc('id')
-            ->first();
+        $latest = $this->game->latestLiveEvent();
 
         if (! $latest instanceof GameEvent) {
             return;

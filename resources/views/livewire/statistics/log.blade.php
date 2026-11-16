@@ -1,6 +1,7 @@
 @php
     $playerFilters = $playerFilters ?? [];
     $actionFilters = $actionFilters ?? [];
+    $canAddLateActions = $canAddLateActions ?? false;
     $actionGroups = [];
 
     foreach ($actionFilters as $option) {
@@ -69,6 +70,17 @@
                 class="text-xs font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline"
                 @click="clearFilters()"
             >{{ __('Clear filters') }}</button>
+            @if ($canAddLateActions)
+                <button
+                    type="button"
+                    wire:click="openLateAction"
+                    class="ms-auto inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-900"
+                    aria-label="{{ __('Add action') }}"
+                >
+                    <flux:icon name="plus" class="size-3.5" />
+                    {{ __('Action') }}
+                </button>
+            @endif
         </div>
 
         <div

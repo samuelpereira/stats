@@ -9,6 +9,7 @@ use App\Models\GameEvent;
 use App\Models\Player;
 use App\Support\ShotCourt;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class UpdateGameEventType
@@ -46,7 +47,11 @@ class UpdateGameEventType
             return;
         }
 
-        $this->updateStat($game, $event, $type, $playerId, $forOpponent, $clock, $foulKind, $courtX, $courtY, $courtProvided);
+        DB::transaction(function () use ($game, $event, $type, $playerId, $forOpponent, $clock, $foulKind, $courtX, $courtY, $courtProvided): void {
+            $this->updateStat($game, $event, $type, $playerId, $forOpponent, $clock, $foulKind, $courtX, $courtY, $courtProvided);
+
+            $game->refreshFinalScore();
+        });
     }
 
     private function updateSubstitution(

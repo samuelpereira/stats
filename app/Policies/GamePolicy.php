@@ -64,6 +64,15 @@ class GamePolicy
         return $user->canCollectStatisticsForTeam($game->team);
     }
 
+    /**
+     * Administrators may add actions to any period that has already ended,
+     * during the game or after it.
+     */
+    public function addLateEvent(User $user, Game $game): bool
+    {
+        return $user->hasRole(RoleName::Administrator) && $game->endedPeriods() !== [];
+    }
+
     private function manages(User $actor, Game $game): bool
     {
         if (! $actor->can(PermissionName::CreateUsers->value)) {

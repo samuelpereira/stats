@@ -56,7 +56,8 @@ class GameEvent extends Model
     }
 
     /**
-     * Game order: period ascending, countdown clock descending, then id.
+     * Game order: period ascending, countdown clock descending, the end of a
+     * period after anything else at the same clock, then id.
      *
      * @param  Builder<GameEvent>  $query
      * @return Builder<GameEvent>
@@ -66,6 +67,7 @@ class GameEvent extends Model
         return $query
             ->orderBy('quarter')
             ->orderByDesc('clock')
+            ->orderByRaw('case when type = ? then 1 else 0 end', [StatType::QuarterEnded->value])
             ->orderBy('id');
     }
 
@@ -84,6 +86,13 @@ class GameEvent extends Model
 
                     if ($left->clock !== $right->clock) {
                         return $right->clock <=> $left->clock;
+                    }
+
+                    $leftEnds = $left->type === StatType::QuarterEnded;
+                    $rightEnds = $right->type === StatType::QuarterEnded;
+
+                    if ($leftEnds !== $rightEnds) {
+                        return $leftEnds ? 1 : -1;
                     }
 
                     return $left->id <=> $right->id;

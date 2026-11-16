@@ -327,6 +327,7 @@
                 'awayColor' => $this->game->away_color->hex(),
                 'playerFilters' => $this->logPlayerFilters,
                 'actionFilters' => $this->logActionFilters,
+                'canAddLateActions' => $this->canAddLateActions,
             ])
         </div>
 
@@ -453,6 +454,7 @@
             'awayColor' => $this->game->away_color->hex(),
             'playerFilters' => $this->logPlayerFilters,
             'actionFilters' => $this->logActionFilters,
+            'canAddLateActions' => $this->canAddLateActions,
         ])
     </section>
 </div>
@@ -785,6 +787,64 @@
         </div>
     </div>
 </flux:modal>
+
+@if ($this->canAddLateActions)
+    <flux:modal wire:model="addingLateAction" :closable="false" class="w-full max-w-md !bg-white">
+        <form wire:submit="saveLateAction" class="space-y-4 text-zinc-900">
+            <div class="text-center">
+                <h2 class="text-base font-semibold">{{ __('Add action') }}</h2>
+                <p class="mt-2 text-sm text-zinc-500">{{ __('Add an action to a period that has already ended.') }}</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <flux:select wire:model="lateEvent.quarter" :label="__('Period')">
+                    @foreach ($this->latePeriods as $period)
+                        <flux:select.option :value="$period['value']">{{ $period['label'] }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+                <flux:input wire:model="lateEvent.clock" :label="__('Clock')" placeholder="05:00" inputmode="numeric" />
+            </div>
+
+            <flux:select wire:model.live="lateEvent.type" :label="__('Action')">
+                <flux:select.option value="">{{ __('Choose…') }}</flux:select.option>
+                @foreach ($this->lateTypes as $type)
+                    <flux:select.option :value="$type['value']">{{ $type['label'] }}</flux:select.option>
+                @endforeach
+            </flux:select>
+
+            @if ($lateEvent->type === \App\Enums\StatType::Foul->value)
+                <flux:select wire:model.live="lateEvent.foulKind" :label="__('Foul type')">
+                    <flux:select.option value="">{{ __('Personal foul') }}</flux:select.option>
+                    @foreach (\App\Enums\FoulKind::cases() as $kind)
+                        <flux:select.option :value="$kind->value">{{ __($kind->pickerTitle()) }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+            @endif
+
+            @if ($lateEvent->type !== '')
+                <flux:select wire:model="lateEvent.actor" :label="$lateEvent->type === \App\Enums\StatType::Timeout->value ? __('Team') : __('Player')">
+                    <flux:select.option value="">{{ __('Choose…') }}</flux:select.option>
+                    @if ($lateEvent->type === \App\Enums\StatType::Timeout->value)
+                        <flux:select.option value="team">{{ $teamName }}</flux:select.option>
+                    @else
+                        @foreach ($this->attachedPlayers as $player)
+                            <flux:select.option value="player:{{ $player->id }}">{{ $player->number === null ? '' : '#'.$player->number.' ' }}{{ $player->name }}</flux:select.option>
+                        @endforeach
+                        @if ($lateEvent->type === \App\Enums\StatType::Foul->value && \App\Enums\FoulKind::tryFrom($lateEvent->foulKind ?? '')?->allowsCoach())
+                            <flux:select.option value="coach">{{ __('Coach / Bench') }}</flux:select.option>
+                        @endif
+                    @endif
+                    <flux:select.option value="opponent">{{ $opponentName }}</flux:select.option>
+                </flux:select>
+            @endif
+
+            <div class="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <button type="button" wire:click="cancelLateAction" class="w-full rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 sm:w-auto">{{ __('Cancel') }}</button>
+                <button type="submit" class="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white sm:w-auto">{{ __('Save') }}</button>
+            </div>
+        </form>
+    </flux:modal>
+@endif
 @once
     <script>
         {!! file_get_contents(resource_path('js/collect-queue.js')) !!}

@@ -240,13 +240,132 @@ class Game extends Model
     }
 
     /**
+     * The latest event logged live: actions added afterwards to a period that
+     * had already ended are skipped, and so is the end marker of that period.
+     */
+    public function latestLiveEvent(): ?GameEvent
+    {
+        $ended = $this->endedPeriods();
+
+        $event = $this->events()
+            ->where(function (Builder $query) use ($ended): void {
+                $query->whereNotIn('quarter', $ended === [] ? [0] : $ended)
+                    ->orWhereIn('type', [StatType::QuarterStarted, StatType::QuarterEnded]);
+            })
+            ->orderByDesc('id')
+            ->first();
+
+        return $event instanceof GameEvent ? $event : null;
+    }
+
+    /**
+     * Periods that were started and ended, in order.
+     *
+     * @return list<int>
+     */
+    public function endedPeriods(): array
+    {
+        $periods = $this->events()
+            ->where('type', StatType::QuarterEnded)
+            ->orderBy('quarter')
+            ->pluck('quarter')
+            ->map(fn (mixed $quarter): int => (int) $quarter)
+            ->unique()
+            ->all();
+
+        return array_values($periods);
+    }
+
+    public function periodMinutes(int $quarter): int
+    {
+        return $quarter <= 4 ? $this->quarter_minutes : $this->overtime_minutes;
+    }
+
+    /**
+     * Players on the court at a moment of the game, after every substitution
+     * logged up to and including that period and clock.
+     *
+     * @return list<int>
+     */
+    public function courtAtMoment(int $quarter, string $clock): array
+    {
+        $lineup = [];
+
+        foreach ($this->players()->wherePivot('starter', true)->pluck('players.id') as $playerId) {
+            $lineup[] = (int) $playerId;
+        }
+
+        $substitutions = $this->events()
+            ->where('type', StatType::Substitution)
+            ->whereNotNull('player_id')
+            ->whereNotNull('outgoing_player_id')
+            ->where(function (Builder $query) use ($quarter, $clock): void {
+                $query->where('quarter', '<', $quarter)
+                    ->orWhere(function (Builder $query) use ($quarter, $clock): void {
+                        $query->where('quarter', $quarter)->where('clock', '>=', $clock);
+                    });
+            })
+            ->chronological()
+            ->get(['id', 'quarter', 'clock', 'player_id', 'outgoing_player_id']);
+
+        foreach ($substitutions as $substitution) {
+            $outgoingId = (int) $substitution->outgoing_player_id;
+            $incomingId = (int) $substitution->player_id;
+
+            $lineup = array_values(array_filter($lineup, fn (int $playerId): bool => $playerId !== $outgoingId));
+
+            if (! in_array($incomingId, $lineup, true)) {
+                $lineup[] = $incomingId;
+            }
+        }
+
+        return $lineup;
+    }
+
+    /**
+     * Points scored by each side across every logged period.
+     *
+     * @return array{home: int, away: int}
+     */
+    public function collectedScoreTotals(): array
+    {
+        $totals = ['home' => 0, 'away' => 0];
+
+        foreach ($this->pointsByQuarter() as $quarter) {
+            $totals['home'] += $quarter['home'];
+            $totals['away'] += $quarter['away'];
+        }
+
+        return $totals;
+    }
+
+    /**
+     * Keep the saved final score of a played game in step with its log.
+     */
+    public function refreshFinalScore(): void
+    {
+        if ($this->status !== GameStatus::Played) {
+            return;
+        }
+
+        $totals = $this->collectedScoreTotals();
+
+        $this->update([
+            'home_points' => $totals['home'],
+            'away_points' => $totals['away'],
+        ]);
+    }
+
+    /**
      * The latest action that can be undone: while the period is open, or after the
      * period ended (for example a substitution before the next tip-off). Ending a
-     * period itself cannot be undone.
+     * period itself cannot be undone, and neither can an action added afterwards
+     * to a period that had already ended.
      */
     public function latestUndoableEvent(): ?GameEvent
     {
         $candidate = null;
+        $ended = $this->endedPeriods();
 
         foreach ($this->events()->latest('id')->get() as $event) {
             if ($event->type === StatType::QuarterStarted) {
@@ -255,6 +374,10 @@ class Game extends Model
 
             if ($event->type === StatType::QuarterEnded) {
                 return $candidate;
+            }
+
+            if (in_array($event->quarter, $ended, true)) {
+                continue;
             }
 
             $candidate ??= $event;
@@ -392,7 +515,7 @@ class Game extends Model
     {
         $players = $this->players()->orderBy('number')->orderBy('name')->get();
         $eventsById = $this->events()->orderBy('id')->get();
-        $latest = $eventsById->last();
+        $latest = $this->latestLiveEvent();
         $marker = $eventsById->reverse()->first(fn (GameEvent $event): bool => $event->type->isPeriod());
         $periodOpen = $marker instanceof GameEvent && $marker->type === StatType::QuarterStarted;
         $lineup = $this->lineupState($latest instanceof GameEvent ? $latest->clock : '00:00', $periodOpen);

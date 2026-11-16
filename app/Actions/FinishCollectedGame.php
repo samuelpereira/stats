@@ -19,7 +19,7 @@ class FinishCollectedGame
             throw new AuthorizationException;
         }
 
-        $totals = $this->scoreTotals($game);
+        $totals = $game->collectedScoreTotals();
 
         $game->update([
             'home_points' => $totals['home'],
@@ -28,24 +28,5 @@ class FinishCollectedGame
         ]);
 
         return $game->refresh();
-    }
-
-    /**
-     * @return array{home: int, away: int}
-     */
-    private function scoreTotals(Game $game): array
-    {
-        $home = 0;
-        $away = 0;
-
-        foreach ($game->pointsByQuarter() as $quarter) {
-            $home += $quarter['home'];
-            $away += $quarter['away'];
-        }
-
-        return [
-            'home' => $home,
-            'away' => $away,
-        ];
     }
 }
